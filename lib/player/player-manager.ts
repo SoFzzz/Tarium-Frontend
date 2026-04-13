@@ -11,10 +11,12 @@ export class PlayerManager {
   private volume = 72;
   private mediaAdapter: MediaAdapter | null;
   private subscribers = new Set<Subscriber>();
+  private snapshot: PlaybackState;
 
   constructor(initialTracks: ITrack[] = [], mediaAdapter: MediaAdapter | null = null) {
     this.playlist = new DoublyLinkedList<ITrack>((track) => track.id);
     this.mediaAdapter = mediaAdapter;
+    this.snapshot = this.buildSnapshot();
 
     if (initialTracks.length > 0) {
       this.loadQueue(initialTracks);
@@ -188,13 +190,7 @@ export class PlayerManager {
   }
 
   public getState(): PlaybackState {
-    return {
-      isPlaying: this.isPlaying,
-      loading: this.loading,
-      volume: this.volume,
-      currentTrack: this.playlist.getCurrent(),
-      queue: this.playlist.toArray(),
-    };
+    return this.snapshot;
   }
 
   public subscribe(listener: Subscriber): () => void {
@@ -206,10 +202,21 @@ export class PlayerManager {
   }
 
   private notify(): void {
-    const snapshot = this.getState();
+    this.snapshot = this.buildSnapshot();
+    const snapshot = this.snapshot;
 
     for (const subscriber of this.subscribers) {
       subscriber(snapshot);
     }
+  }
+
+  private buildSnapshot(): PlaybackState {
+    return {
+      isPlaying: this.isPlaying,
+      loading: this.loading,
+      volume: this.volume,
+      currentTrack: this.playlist.getCurrent(),
+      queue: this.playlist.toArray(),
+    };
   }
 }
