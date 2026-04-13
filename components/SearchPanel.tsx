@@ -36,12 +36,10 @@ export function SearchPanel() {
     <section className="space-y-3">
       <form onSubmit={handleSearch} className="flex items-center gap-2">
         <Input
-          size={32}
-          radius="full"
-          variant="bordered"
           placeholder="Buscar en YouTube (no se reproduce, solo metadatos)"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          className="flex-1"
         />
         <Button
           type="submit"
