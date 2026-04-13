@@ -48,7 +48,7 @@ export function SearchPanel() {
   }
 
   return (
-    <section ref={containerRef} className="relative space-y-3">
+    <section ref={containerRef} className="relative w-full space-y-3">
       <form onSubmit={handleSearch} className="flex items-center gap-2">
         <input
           placeholder="Buscar con Deezer"

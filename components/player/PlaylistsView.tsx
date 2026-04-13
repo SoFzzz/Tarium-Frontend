@@ -5,6 +5,7 @@ import { GripVertical, Heart, Play, Trash2 } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
+  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
@@ -72,6 +73,9 @@ export function PlaylistsView({
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 120, tolerance: 8 },
     }),
   );
 
@@ -249,7 +253,7 @@ function SortablePlaylistRow({
       <button
         type="button"
         aria-label="Reordenar"
-        className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--muted)] hover:text-[var(--foreground)] cursor-grab active:cursor-grabbing sm:h-7 sm:w-7"
+        className="flex h-9 w-9 touch-none items-center justify-center rounded-md text-[var(--muted)] hover:text-[var(--foreground)] cursor-grab active:cursor-grabbing sm:h-7 sm:w-7"
         {...attributes}
         {...listeners}
         onClick={(e) => e.preventDefault()}

@@ -27,6 +27,7 @@ import {
 import {
   DndContext,
   PointerSensor,
+  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
@@ -355,7 +356,7 @@ export function PlayerShell() {
         {/* Sidebar fija */}
         <aside className="fixed left-0 top-0 hidden h-full w-16 flex-col items-center justify-between border-r border-[var(--line)] bg-[var(--surface)] py-6 sm:flex">
           <div className="flex flex-col items-center gap-4">
-            <div className="mb-4 h-9 w-9 rounded-full bg-[var(--accent)] text-xs font-bold text-[var(--background)] flex items-center justify-center">
+            <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-[var(--background)]">
               T
             </div>
             <nav className="flex flex-col items-center gap-3 text-[var(--muted)]">
@@ -457,6 +458,11 @@ export function PlayerShell() {
 
           {/* Área principal */}
           <div className="flex flex-1 flex-col gap-4 bg-[var(--background)] px-4 pt-4 pb-32 sm:px-6 sm:pb-24">
+            <div className="sm:hidden">
+              <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-3">
+                <SearchPanel />
+              </div>
+            </div>
             <div className="grid gap-4 grid-cols-1">
               {/* Columna unica: vistas dinámicas */}
               <div className="flex flex-col gap-4">
@@ -839,7 +845,10 @@ export function PlayerShell() {
           </div>
 
           {/* Barra de reproducción inferior fija */}
-          <nav className="fixed bottom-16 left-0 right-0 z-40 flex items-center justify-around border-t border-[var(--line)] bg-[var(--surface)] px-2 py-2 sm:hidden">
+          <nav
+            className="fixed left-0 right-0 z-40 flex items-center justify-around border-t border-[var(--line)] bg-[var(--surface)] px-2 py-2 sm:hidden"
+            style={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom, 0px))" }}
+          >
             <MobileNavIcon
               icon={Home}
               label="Inicio"
@@ -859,7 +868,14 @@ export function PlayerShell() {
               onClick={() => setActiveView("playlists")}
             />
           </nav>
-          <footer className="fixed bottom-0 left-0 right-0 flex h-16 items-center gap-3 border-t border-[var(--line)] bg-[var(--surface)] px-3 sm:left-16 sm:gap-4 sm:px-6">
+          <footer
+            className="fixed bottom-0 left-0 right-0 flex items-center gap-3 border-t border-[var(--line)] bg-[var(--surface)] px-3 sm:left-16 sm:h-16 sm:gap-4 sm:px-6"
+            style={{
+              minHeight: "4.75rem",
+              paddingTop: "0.75rem",
+              paddingBottom: "max(env(safe-area-inset-bottom, 0px), 0.75rem)",
+            }}
+          >
             {/* Artwork + info */}
             <div className="flex min-w-0 flex-[2] items-center gap-2 sm:gap-3">
               <div className="h-10 w-10 overflow-hidden rounded-md border border-[var(--line)] bg-[var(--surface-elevated)]">
@@ -925,7 +941,7 @@ export function PlayerShell() {
                 </Button>
                 <Button
                   size="lg"
-                  className="h-12 w-12 min-w-12 rounded-full px-0 bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] hover:text-white active:bg-[var(--accent-active)] sm:h-10 sm:min-w-24 sm:px-5"
+                  className="h-12 w-12 shrink-0 rounded-full px-0 leading-none bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] hover:text-white active:bg-[var(--accent-active)] sm:h-10 sm:min-w-24 sm:px-5"
                   disabled={state.loading || !currentTrack}
                   onClick={() => void actions.togglePlayPause()}
                 >
@@ -1129,6 +1145,9 @@ function HomeQueuePanel({
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
     }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 120, tolerance: 8 },
+    }),
   );
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -1233,7 +1252,7 @@ function SortableHomeQueueRow({
       <button
         type="button"
         aria-label="Reordenar"
-        className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted)] hover:text-[var(--foreground)] cursor-grab active:cursor-grabbing"
+        className="flex h-8 w-8 touch-none items-center justify-center rounded-md text-[var(--muted)] hover:text-[var(--foreground)] cursor-grab active:cursor-grabbing"
         {...attributes}
         {...listeners}
         onClick={(event) => event.preventDefault()}
