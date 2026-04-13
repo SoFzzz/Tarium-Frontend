@@ -127,7 +127,7 @@ export function PlayerShell() {
                   <DropdownTrigger>
                     <Button
                       isIconOnly
-                      variant="light"
+                      variant="ghost"
                       className="text-[var(--foreground)]"
                     >
                       <User size={18} />
@@ -137,7 +137,7 @@ export function PlayerShell() {
                     aria-label="User menu"
                     className="bg-[var(--surface)] border border-white/10"
                   >
-                    <DropdownItem key="user" isReadOnly className="text-xs">
+                    <DropdownItem key="user" className="text-xs cursor-default">
                       {user.email}
                     </DropdownItem>
                     <DropdownItem key="signout" onClick={signOut}>
@@ -207,7 +207,7 @@ export function PlayerShell() {
                 <div className="mt-4 flex items-center gap-2">
                   <Button
                     isIconOnly
-                    variant="light"
+                    variant="ghost"
                     className={`rounded-full ${
                       isCurrentTrackFavorite
                         ? "text-[var(--accent)]"
@@ -236,7 +236,7 @@ export function PlayerShell() {
                       className="bg-[var(--surface)] border border-white/10"
                     >
                       {playlists.length === 0 ? (
-                        <DropdownItem key="empty" isReadOnly className="text-xs">
+                        <DropdownItem key="empty" className="text-xs cursor-default">
                           No playlists
                         </DropdownItem>
                       ) : (

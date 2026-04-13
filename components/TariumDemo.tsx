@@ -36,7 +36,6 @@ export function AuthSection() {
         <Button
           onClick={() => signIn(email, password)}
           className="w-full"
-          color="primary"
         >
           Iniciar Sesión
         </Button>
@@ -47,7 +46,7 @@ export function AuthSection() {
   return (
     <div className="p-4 border rounded">
       <p>Bienvenido, {user.email}</p>
-      <Button onClick={signOut} color="danger" className="mt-4">
+      <Button onClick={signOut} className="mt-4">
         Cerrar Sesión
       </Button>
     </div>
@@ -87,8 +86,6 @@ export function PlaylistsSection() {
         />
         <Button
           onClick={handleCreatePlaylist}
-          isLoading={loading}
-          color="primary"
         >
           Crear
         </Button>
