@@ -53,8 +53,6 @@ export function SearchResultList({ results }: Props) {
             <Button
               isIconOnly
               size="sm"
-              radius="full"
-              variant="light"
               className="h-7 w-7 border border-white/10 bg-white/5 text-white/80"
               onPress={() => {
                 const track = {
@@ -74,8 +72,6 @@ export function SearchResultList({ results }: Props) {
               <Button
                 isIconOnly
                 size="sm"
-                radius="full"
-                variant="light"
                 className="h-7 w-7 border border-white/10 bg-white/5 text-white/80"
                 onPress={async () => {
                   if (!playlists.length) return;
@@ -95,8 +91,6 @@ export function SearchResultList({ results }: Props) {
               <Button
                 isIconOnly
                 size="sm"
-                radius="full"
-                variant="light"
                 className="h-7 w-7 border border-white/10 bg-white/5 text-white/80"
                 onPress={async () => {
                   await addFavorite({

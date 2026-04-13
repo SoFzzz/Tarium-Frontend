@@ -60,7 +60,10 @@ export async function parseFileToLocalTrack(file: File): Promise<LocalTrack> {
     const picture = metadata.common.picture?.[0];
 
     if (picture && picture.data && picture.data.length > 0) {
-      const blob = new Blob([picture.data], { type: picture.format || "image/jpeg" });
+      // Normalizamos/casteamos el buffer que viene de music-metadata a un tipo
+      // aceptado por Blob (BlobPart). En runtime sigue siendo un buffer de bytes.
+      const data = picture.data as unknown as BlobPart;
+      const blob = new Blob([data], { type: picture.format || "image/jpeg" });
       artworkUrl = URL.createObjectURL(blob);
     }
   } catch {

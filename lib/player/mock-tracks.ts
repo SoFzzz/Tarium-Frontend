@@ -3,7 +3,6 @@ import type { ITrack } from "./types";
 export const mockTracks: ITrack[] = [
   {
     id: "amber-skies",
-    videoId: "ytm-amber-skies",
     title: "Amber Skies",
     artist: "Nocturne District",
     album: "Afterglow Studies",
@@ -13,7 +12,6 @@ export const mockTracks: ITrack[] = [
   },
   {
     id: "velvet-drive",
-    videoId: "ytm-velvet-drive",
     title: "Velvet Drive",
     artist: "June Arcade",
     album: "Night Traffic",
@@ -23,7 +21,6 @@ export const mockTracks: ITrack[] = [
   },
   {
     id: "paradise-signal",
-    videoId: "ytm-paradise-signal",
     title: "Paradise Signal",
     artist: "Mirage Bloom",
     album: "Satellite Hearts",
@@ -33,7 +30,6 @@ export const mockTracks: ITrack[] = [
   },
   {
     id: "midnight-lobby",
-    videoId: "ytm-midnight-lobby",
     title: "Midnight Lobby",
     artist: "Hotel Static",
     album: "Room Tone",
@@ -43,7 +39,6 @@ export const mockTracks: ITrack[] = [
   },
   {
     id: "glass-horizon",
-    videoId: "ytm-glass-horizon",
     title: "Glass Horizon",
     artist: "Cinder Vale",
     album: "Blue Transit",
