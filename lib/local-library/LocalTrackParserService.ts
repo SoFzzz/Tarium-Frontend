@@ -8,18 +8,14 @@ import type { LocalTrack, MetadataStatus } from "@/lib/player/types";
 // Usamos /placeholder.png en public/ como recurso genérico.
 const FALLBACK_ARTWORK_URL = "/placeholder.png";
 
-// Genera un id estable a partir de nombre + tamaño + duracion en segundos.
-function stableTrackId(fileName: string, size: number, durationSeconds: number): string {
-  const base = `${fileName}::${size}::${durationSeconds}`;
-  let hash = 0;
-
-  for (let i = 0; i < base.length; i += 1) {
-    const chr = base.charCodeAt(i);
-    hash = (hash << 5) - hash + chr;
-    hash |= 0;
+function generateLocalTrackId(): string {
+  const randomUUID = (globalThis.crypto as Crypto | undefined)?.randomUUID;
+  if (typeof randomUUID === "function") {
+    return `local-${randomUUID.call(globalThis.crypto)}`;
   }
 
-  return `local-${Math.abs(hash)}`;
+  // Fallback defensivo si randomUUID no existe.
+  return `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function inferMetadataStatus(title: string, artist: string, album: string): MetadataStatus {
@@ -80,7 +76,7 @@ export async function parseFileToLocalTrack(file: File): Promise<LocalTrack> {
   }
 
   const effectiveDuration = durationSeconds > 0 ? durationSeconds : 0;
-  const id = stableTrackId(file.name, file.size, effectiveDuration);
+  const id = generateLocalTrackId();
   const metadataStatus = inferMetadataStatus(title, artist, album);
 
   const localTrack: LocalTrack = {

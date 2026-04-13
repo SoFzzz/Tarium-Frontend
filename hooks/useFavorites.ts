@@ -25,7 +25,7 @@ interface UseFavorites {
 }
 
 export function useFavorites(): UseFavorites {
-  const { session, user } = useAuth();
+  const { session, user, authLoading } = useAuth();
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -145,13 +145,17 @@ export function useFavorites(): UseFavorites {
   );
 
   useEffect(() => {
+    // Esperar a que auth resuelva la sesion inicial para evitar limpiar el estado
+    // si hay una sesion persistida (flash de user=null).
+    if (authLoading) return;
+
     if (!user) {
       setFavorites([]);
       return;
     }
 
     void getFavorites();
-  }, [user, getFavorites]);
+  }, [user, authLoading, getFavorites]);
 
   return {
     favorites,

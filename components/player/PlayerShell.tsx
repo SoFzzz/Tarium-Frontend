@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   Clock3,
@@ -22,13 +22,31 @@ import {
   Shuffle,
   Repeat,
   Repeat1,
+  GripVertical,
+  Trash2,
 } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  arrayMove,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 
 import { usePlayer } from "@/providers/PlayerProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { usePlaylists, type Playlist, type PlaylistTrack } from "@/hooks/usePlaylists";
 import { useFavorites, type Favorite } from "@/hooks/useFavorites";
-import { SearchPanel } from "@/components/SearchPanel";
+// import { SearchPanel } from "@/components/SearchPanel";
 import { LocalLibraryDropzone } from "@/components/LocalLibraryDropzone";
 import { LibraryView } from "./LibraryView";
 import { FavoritesView } from "./FavoritesView";
@@ -36,7 +54,7 @@ import { PlaylistsView } from "./PlaylistsView";
 import { mapLocalTrackToITrack, type LocalTrack, type ITrack } from "@/lib/player/types";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { ScrollArea } from "@/components/ui/scroll-area";
+// import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTheme } from "next-themes";
 import { AuthModalControlled } from "@/components/auth/AuthModal";
@@ -58,6 +76,9 @@ export function PlayerShell() {
   const { user, signOut } = useAuth();
   const { playlists, createPlaylist, getPlaylistTracks, addTrackToPlaylist, removeTrackFromPlaylist, deletePlaylist } = usePlaylists();
   const { favorites, addFavorite, removeFavorite, isFavorite } = useFavorites();
+
+  // Set estable: evita re-renders de LibraryView por ticks de progreso.
+  const favoritedIds = useMemo(() => new Set<string>(favorites.map((f) => f.track_id)), [favorites]);
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
@@ -234,6 +255,7 @@ export function PlayerShell() {
     if (!playlistTracks || playlistTracks.length === 0) return;
     const tracks = playlistTracks.map(mapPlaylistTrackToITrack);
     actions.setQueue(tracks);
+    setActiveView("home");
     await actions.playById(playlistTrack.track_id);
   };
 
@@ -241,6 +263,7 @@ export function PlayerShell() {
     if (!playlistTracks || playlistTracks.length === 0) return;
     const tracks = playlistTracks.map(mapPlaylistTrackToITrack);
     actions.setQueue(tracks);
+    setActiveView("home");
     await actions.play();
   };
 
@@ -331,7 +354,7 @@ export function PlayerShell() {
     <TooltipProvider>
       <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
         {/* Sidebar fija */}
-        <aside className="fixed left-0 top-0 flex h-full w-16 flex-col items-center justify-between border-r border-[var(--line)] bg-[var(--surface)] py-6">
+        <aside className="fixed left-0 top-0 hidden h-full w-16 flex-col items-center justify-between border-r border-[var(--line)] bg-[var(--surface)] py-6 sm:flex">
           <div className="flex flex-col items-center gap-4">
             <div className="mb-4 h-9 w-9 rounded-full bg-[var(--accent)] text-xs font-bold text-[var(--background)] flex items-center justify-center">
               T
@@ -346,8 +369,8 @@ export function PlayerShell() {
               <SidebarIcon
                 icon={Library}
                 label="Biblioteca"
-                active={activeView === "library"}
-                onClick={() => setActiveView("library")}
+                active={activeView === "home"}
+                onClick={() => setActiveView("home")}
               />
               <SidebarIcon
                 icon={Star}
@@ -396,9 +419,9 @@ export function PlayerShell() {
         </aside>
 
         {/* Contenido principal */}
-        <section className="ml-16 flex min-h-screen flex-col bg-[var(--background)] pb-16">
+        <section className="ml-0 flex min-h-screen flex-col bg-[var(--background)] pb-16 sm:ml-16">
           {/* Header */}
-          <header className="flex items-center justify-between border-b border-[var(--line)] bg-[var(--surface)] px-6 py-4">
+          <header className="flex items-center justify-between border-b border-[var(--line)] bg-[var(--surface)] px-4 py-4 sm:px-6">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-[var(--muted)]">
                 Tarium
@@ -415,7 +438,24 @@ export function PlayerShell() {
               </div>
               <ThemeToggleButton />
               {user ? (
-                <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                <button
+                  type="button"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] bg-[var(--surface-elevated)] text-xs sm:hidden"
+                  onClick={signOut}
+                >
+                  <LogOut size={16} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] bg-[var(--surface-elevated)] text-xs text-[var(--muted)] hover:text-[var(--foreground)] sm:hidden"
+                  onClick={() => setAuthModalOpen(true)}
+                >
+                  <User size={16} />
+                </button>
+              )}
+              {user ? (
+                <div className="hidden items-center gap-2 text-xs text-[var(--muted)] sm:flex">
                   <User size={16} />
                   <span className="max-w-[10rem] truncate">{user.email}</span>
                 </div>
@@ -424,24 +464,149 @@ export function PlayerShell() {
           </header>
 
           {/* Área principal */}
-          <div className="flex flex-1 flex-col gap-4 bg-[var(--background)] px-4 pt-4 pb-24 sm:px-6">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-              {/* Grid principal: artwork + biblioteca local / vistas dinámicas */}
+          <div className="flex flex-1 flex-col gap-4 bg-[var(--background)] px-4 pt-4 pb-32 sm:px-6 sm:pb-24">
+            <div className="grid gap-4 grid-cols-1">
+              {/* Columna unica: vistas dinámicas */}
               <div className="flex flex-col gap-4">
+                {activeView === "home" ? (
+                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                    <div className="flex flex-col gap-4">
+                      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
+                          Reproduciendo ahora
+                        </p>
+                        <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-center">
+                          <div className="mx-auto hidden h-56 w-56 overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--surface-elevated)] sm:block lg:mx-0 lg:h-64 lg:w-64">
+                            {currentTrack ? (
+                              <img
+                                src={currentTrack.thumbnailUrl}
+                                alt={currentTrack.title}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-sm text-[var(--muted)]">
+                                Sin artwork
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="mx-auto mb-4 block h-32 w-32 overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface-elevated)] sm:hidden">
+                              {currentTrack ? (
+                                <img
+                                  src={currentTrack.thumbnailUrl}
+                                  alt={currentTrack.title}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-sm text-[var(--muted)]">
+                                  Sin artwork
+                                </div>
+                              )}
+                            </div>
+                            <h2 className="font-[family-name:var(--font-cormorant)] text-4xl sm:text-5xl">
+                              {currentTrack ? currentTrack.title : "Ningun track seleccionado"}
+                            </h2>
+                            <p className="mt-2 truncate text-sm text-[var(--muted)] sm:text-base">
+                              {currentTrack ? currentTrack.artist : "Carga archivos o anade pistas a la cola"}
+                            </p>
+                            <div className="mt-6 flex items-center justify-between text-xs text-[var(--muted)]">
+                              <div className="flex items-center gap-2">
+                                <Clock3 size={14} />
+                                <span>
+                                  {formatDuration(
+                                    isSeeking ? (seekValue ?? displayProgress) : displayProgress,
+                                  )}{" "}
+                                  / {formatDuration(state.durationSeconds)}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <ListMusic size={14} />
+                                <span>{queue.length} en cola</span>
+                              </div>
+                            </div>
+                            <Slider
+                              value={
+                                state.durationSeconds > 0
+                                  ? [isSeeking ? (seekValue ?? displayProgress) : displayProgress]
+                                  : [0]
+                              }
+                              max={state.durationSeconds || 0}
+                              step={1}
+                              disabled={state.durationSeconds <= 0}
+                              onValueChange={([val]) => {
+                                setIsSeeking(true);
+                                setSeekValue(val);
+                              }}
+                              onValueCommit={([val]) => {
+                                setIsSeeking(false);
+                                setSeekValue(val);
+                                setDisplayProgress(val);
+                                actions.seek(val);
+                              }}
+                              className="mt-3 w-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
+                              Biblioteca local
+                            </p>
+                            <p className="text-xs text-[var(--muted)]">
+                              Arrastra archivos o usa el boton para cargarlos
+                            </p>
+                          </div>
+                        </div>
+                        <LocalLibraryDropzone onTracksParsed={handleLocalDropzoneTracksParsed} />
+                      </div>
+                    </div>
+                    <HomeQueuePanel
+                      queue={queue}
+                      currentTrackId={currentTrackId}
+                      authenticated={Boolean(user)}
+                      isFavorite={isFavorite}
+                      onPlayTrack={(id) => void actions.playById(id)}
+                      onReorder={(newQueue) => actions.setQueue(newQueue)}
+                      onRemoveTrack={(id) => {
+                        actions.removeTrack(id);
+                      }}
+                      onToggleFavorite={async (track) => {
+                        if (!user) {
+                          setAuthModalOpen(true);
+                          return;
+                        }
+
+                        if (isFavorite(track.id)) {
+                          await removeFavorite(track.id);
+                          return;
+                        }
+
+                        await addFavorite({
+                          track_id: track.id,
+                          title: track.title,
+                          artist: track.artist,
+                          thumbnail_url: track.thumbnailUrl,
+                        });
+                      }}
+                    />
+                  </div>
+                ) : (<> 
                 {/* Vista principal / biblioteca según activeView */}
                 <div className="flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      {activeView === "home" && (
+                      {false && (
                         <>
                           <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
                             Reproduciendo ahora
                           </p>
-                          <h2 className="mt-1 truncate font-[family-name:var(--font-cormorant)] text-2xl sm:text-3xl">
-                            {currentTrack ? currentTrack.title : "Ningún track seleccionado"}
-                          </h2>
+                           <h2 className="mt-2 truncate font-[family-name:var(--font-cormorant)] text-4xl sm:text-5xl">
+                             {currentTrack?.title ?? "Ningún track seleccionado"}
+                           </h2>
                           <p className="truncate text-xs text-[var(--muted)]">
-                            {currentTrack ? currentTrack.artist : "Carga archivos o añade pistas a la cola"}
+                            {currentTrack?.artist ?? "Carga archivos o añade pistas a la cola"}
                           </p>
                         </>
                       )}
@@ -485,25 +650,25 @@ export function PlayerShell() {
                         </>
                       )}
                     </div>
-                    {currentTrack && activeView === "home" && (
-                      <div className="hidden h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl border border-[var(--line)] sm:block">
+                     {false && currentTrack && (
+                      <div className="hidden h-40 w-40 flex-shrink-0 overflow-hidden rounded-2xl border border-[var(--line)] sm:block">
                         <img
-                          src={currentTrack.thumbnailUrl}
-                          alt={currentTrack.title}
+                          src={currentTrack?.thumbnailUrl ?? "/placeholder.png"}
+                          alt={currentTrack?.title ?? "Track"}
                           className="h-full w-full object-cover"
                         />
                       </div>
                     )}
                   </div>
 
-                  {activeView === "home" && (
+                  {false && (
                     <>
                       <div className="mt-2 flex items-center justify-between text-xs text-[var(--muted)]">
                         <div className="flex items-center gap-2">
                           <Clock3 size={14} />
                           <span>
                             {formatDuration(
-                              isSeeking && seekValue !== null ? seekValue : displayProgress,
+                              isSeeking ? (seekValue ?? displayProgress) : displayProgress,
                             )}{" "}
                             / {formatDuration(state.durationSeconds)}
                           </span>
@@ -517,7 +682,7 @@ export function PlayerShell() {
                       <Slider
                         value={
                           state.durationSeconds > 0
-                            ? [isSeeking && seekValue !== null ? seekValue : displayProgress]
+                            ? [isSeeking ? (seekValue ?? displayProgress) : displayProgress]
                             : [0]
                         }
                         max={state.durationSeconds || 0}
@@ -538,26 +703,14 @@ export function PlayerShell() {
                     </>
                   )}
                 </div>
-                {activeView === "home" && (
-                  <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
-                          Biblioteca local
-                        </p>
-                        <p className="text-xs text-[var(--muted)]">Arrastra archivos o usa el botón para cargarlos</p>
-                      </div>
-                    </div>
-
-                    <LocalLibraryDropzone onTracksParsed={handleLocalDropzoneTracksParsed} />
-                  </div>
-                )}
                 {activeView === "library" && (
                   <LibraryView
                     queue={queue}
                     currentTrackId={currentTrackId}
                     authenticated={Boolean(user)}
+                    favoritedIds={favoritedIds}
                     playlists={playlists}
+                    onReorder={(newQueue) => actions.setQueue(newQueue)}
                     onPlayTrack={(id) => void actions.playById(id)}
                     onToggleFavorite={async (track) => {
                       if (!track) return;
@@ -592,6 +745,12 @@ export function PlayerShell() {
                         thumbnail_url: track.thumbnailUrl,
                         duration_seconds: track.durationInSeconds,
                       });
+
+                      // Si esa playlist esta seleccionada, refrescar la lista visible.
+                      if (selectedPlaylistId === playlistId) {
+                        const updated = await getPlaylistTracks(playlistId);
+                        setPlaylistTracks(updated);
+                      }
                     }}
                   />
                 )}
@@ -627,6 +786,7 @@ export function PlayerShell() {
                     selectedPlaylistId={selectedPlaylistId}
                     playlistTracks={playlistTracks}
                     loadingTracks={loadingPlaylistTracks}
+                    favoritedIds={favoritedIds}
                     onSelectPlaylist={(id) => {
                       if (!user) {
                         setAuthModalOpen(true);
@@ -656,79 +816,60 @@ export function PlayerShell() {
                     }}
                     onAddCurrentTrack={handleAddCurrentTrackToPlaylist}
                     canAddCurrentTrack={Boolean(currentTrack && selectedPlaylistId)}
+                    onToggleFavorite={async (track) => {
+                      if (!user) {
+                        setAuthModalOpen(true);
+                        return;
+                      }
+
+                      const favorite = isFavorite(track.track_id);
+                      if (favorite) {
+                        await removeFavorite(track.track_id);
+                        return;
+                      }
+
+                      await addFavorite({
+                        track_id: track.track_id,
+                        title: track.title,
+                        artist: track.artist,
+                        thumbnail_url: track.thumbnail_url,
+                      });
+                    }}
+                    onReorderTracks={(playlistId, newTracks) => {
+                      if (selectedPlaylistId !== playlistId) return;
+                      setPlaylistTracks(newTracks);
+                    }}
                   />
                 )}
-              </div>
-
-              {/* Cola + búsqueda YouTube */}
-              <div className="flex flex-col gap-4">
-                <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-[var(--line)] bg-[var(--surface)]">
-                  <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-3">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
-                        Cola
-                      </p>
-                      <p className="text-xs text-[var(--muted)]">Toca un track para reproducirlo</p>
-                    </div>
-                  </div>
-
-                  <ScrollArea className="max-h-64 px-2 py-2">
-                    {queue.length === 0 ? (
-                      <p className="px-3 py-4 text-xs text-[var(--muted)]">
-                        No hay nada en la cola todavía.
-                      </p>
-                    ) : (
-                      <ul className="space-y-1">
-                        {queue.map((track) => {
-                          const isCurrent = track.id === currentTrackId;
-                          return (
-                            <li key={track.id}>
-                              <button
-                                type="button"
-                                className={`flex w-full items-center gap-3 rounded-xl border px-2 py-2 text-left text-xs transition-colors ${
-                                  isCurrent
-                                    ? "border-[var(--accent)]/60 bg-[var(--accent)]/10"
-                                    : "border-transparent hover:border-[var(--line)] hover:bg-[var(--surface-elevated)]"
-                                }`}
-                                onClick={() => void actions.playById(track.id)}
-                              >
-                                <img
-                                  src={track.thumbnailUrl}
-                                  alt={track.title}
-                                  className="h-10 w-10 flex-shrink-0 rounded-lg object-cover"
-                                />
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-[13px] font-semibold">{track.title}</p>
-                                  <p className="truncate text-[11px] text-[var(--muted)]">
-                                    {track.artist}
-                                  </p>
-                                </div>
-                                <span className="ml-2 text-[11px] text-[var(--muted)]">
-                                  {formatDuration(track.durationInSeconds)}
-                                </span>
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </ScrollArea>
-                </div>
-
-                <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
-                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
-                    Búsqueda en YouTube
-                  </p>
-                  <SearchPanel />
-                </div>
+                </>)}
               </div>
             </div>
           </div>
 
           {/* Barra de reproducción inferior fija */}
-          <footer className="fixed bottom-0 left-16 right-0 flex h-16 items-center gap-4 border-t border-[var(--line)] bg-[var(--surface)] px-4 sm:px-6">
+          <nav className="fixed bottom-16 left-0 right-0 z-40 flex items-center justify-around border-t border-[var(--line)] bg-[var(--surface)] px-2 py-2 sm:hidden">
+            <MobileNavIcon
+              icon={Home}
+              label="Inicio"
+              active={activeView === "home"}
+              onClick={() => setActiveView("home")}
+            />
+            <MobileNavIcon
+              icon={Star}
+              label="Favoritos"
+              active={activeView === "favorites"}
+              onClick={() => setActiveView("favorites")}
+            />
+            <MobileNavIcon
+              icon={ListMusic}
+              label="Playlists"
+              active={activeView === "playlists"}
+              onClick={() => setActiveView("playlists")}
+            />
+          </nav>
+          <footer className="fixed bottom-0 left-0 right-0 flex h-16 items-center gap-3 border-t border-[var(--line)] bg-[var(--surface)] px-3 sm:left-16 sm:gap-4 sm:px-6">
             {/* Artwork + info */}
-            <div className="flex min-w-0 flex-[2] items-center gap-3">
+            <div className="flex min-w-0 flex-[2] items-center gap-2 sm:gap-3">
               <div className="h-10 w-10 overflow-hidden rounded-md border border-[var(--line)] bg-[var(--surface-elevated)]">
                 {currentTrack ? (
                   <img
@@ -750,7 +891,7 @@ export function PlayerShell() {
                 user ? (
                   <button
                     type="button"
-                    className={`ml-1 flex h-8 w-8 items-center justify-center rounded-full border text-[var(--muted)] ${
+                    className={`ml-1 hidden h-8 w-8 items-center justify-center rounded-full border text-[var(--muted)] sm:flex ${
                       isCurrentTrackFavorite
                         ? "border-[var(--accent)] text-[var(--accent)]"
                         : "border-[var(--line)]"
@@ -766,7 +907,7 @@ export function PlayerShell() {
                         <button
                           type="button"
                           disabled
-                          className="ml-1 flex h-8 w-8 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] opacity-40 cursor-not-allowed"
+                          className="ml-1 hidden h-8 w-8 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] opacity-40 cursor-not-allowed sm:flex"
                         >
                           <Heart size={16} />
                         </button>
@@ -780,7 +921,7 @@ export function PlayerShell() {
 
             {/* Controles principales */}
             <div className="flex flex-[3] flex-col items-center gap-1">
-              <div className="flex items-center justify-center gap-3">
+              <div className="flex items-center justify-center gap-2 sm:gap-3">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -792,7 +933,7 @@ export function PlayerShell() {
                 </Button>
                 <Button
                   size="lg"
-                  className="h-10 min-w-24 rounded-full px-5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] active:bg-[var(--accent-active)] text-white hover:text-white"
+                  className="h-12 w-12 min-w-12 rounded-full px-0 bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] hover:text-white active:bg-[var(--accent-active)] sm:h-10 sm:min-w-24 sm:px-5"
                   disabled={state.loading || !currentTrack}
                   onClick={() => void actions.togglePlayPause()}
                 >
@@ -803,7 +944,7 @@ export function PlayerShell() {
                   size="icon"
                   disabled={state.loading || queue.length < 2}
                   onClick={handleShuffleClick}
-                  className={queue.length >= 2 ? "text-[var(--foreground)]" : "text-[var(--muted)]"}
+                  className={`${queue.length >= 2 ? "text-[var(--foreground)]" : "text-[var(--muted)]"} hidden sm:inline-flex`}
                 >
                   <Shuffle size={18} />
                 </Button>
@@ -813,9 +954,7 @@ export function PlayerShell() {
                   size="icon"
                   disabled={state.loading}
                   onClick={() => actions.cycleRepeatMode()}
-                  className={
-                    state.repeatMode === "off" ? "text-[var(--muted)]" : "text-[var(--accent)]"
-                  }
+                  className={`${state.repeatMode === "off" ? "text-[var(--muted)]" : "text-[var(--accent)]"} hidden sm:inline-flex`}
                 >
                   {state.repeatMode === "one" ? <Repeat1 size={18} /> : <Repeat size={18} />}
                 </Button>
@@ -849,7 +988,7 @@ export function PlayerShell() {
               />
               <div className="hidden flex-col items-end text-xs text-[var(--muted)] md:flex">
                 <span>
-                  {formatDuration(isSeeking && seekValue !== null ? seekValue : displayProgress)}
+                  {formatDuration(isSeeking ? (seekValue ?? displayProgress) : displayProgress)}
                 </span>
                 <span>{formatDuration(state.durationSeconds)}</span>
               </div>
@@ -966,6 +1105,203 @@ type SidebarIconProps = {
   onClick?: () => void;
 };
 
+type HomeQueuePanelProps = {
+  queue: ITrack[];
+  currentTrackId: string | null;
+  authenticated: boolean;
+  isFavorite: (trackId: string) => boolean;
+  onPlayTrack: (id: string) => void;
+  onReorder: (newQueue: ITrack[]) => void;
+  onRemoveTrack: (id: string) => void;
+  onToggleFavorite: (track: ITrack) => void | Promise<void>;
+};
+
+function HomeQueuePanel({
+  queue,
+  currentTrackId,
+  authenticated,
+  isFavorite,
+  onPlayTrack,
+  onReorder,
+  onRemoveTrack,
+  onToggleFavorite,
+}: HomeQueuePanelProps) {
+  const [orderedQueue, setOrderedQueue] = useState<ITrack[]>(queue);
+
+  useEffect(() => {
+    setOrderedQueue(queue);
+  }, [queue]);
+
+  const ids = useMemo(() => orderedQueue.map((track) => track.id), [orderedQueue]);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+    if (active.id === over.id) return;
+
+    const oldIndex = orderedQueue.findIndex((track) => track.id === active.id);
+    const newIndex = orderedQueue.findIndex((track) => track.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const next = arrayMove(orderedQueue, oldIndex, newIndex);
+    setOrderedQueue(next);
+    Promise.resolve().then(() => onReorder(next));
+  };
+
+  return (
+    <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
+            Cola actual
+          </p>
+          <p className="text-xs text-[var(--muted)]">
+            Reordena, marca favoritos o elimina tracks de la cola
+          </p>
+        </div>
+        <span className="text-xs text-[var(--muted)]">{queue.length} tracks</span>
+      </div>
+
+      {orderedQueue.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-[var(--line)] px-4 py-6 text-sm text-[var(--muted)]">
+          La cola esta vacia. Carga archivos en tu biblioteca local para empezar.
+        </div>
+      ) : (
+        <div className="max-h-[32rem] overflow-y-auto pr-1">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+              <ul className="space-y-1 text-xs">
+                {orderedQueue.map((track) => (
+                  <SortableHomeQueueRow
+                    key={track.id}
+                    track={track}
+                    currentTrackId={currentTrackId}
+                    authenticated={authenticated}
+                    isFav={isFavorite(track.id)}
+                    onPlayTrack={onPlayTrack}
+                    onRemoveTrack={onRemoveTrack}
+                    onToggleFavorite={onToggleFavorite}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SortableHomeQueueRow({
+  track,
+  currentTrackId,
+  authenticated,
+  isFav,
+  onPlayTrack,
+  onRemoveTrack,
+  onToggleFavorite,
+}: {
+  track: ITrack;
+  currentTrackId: string | null;
+  authenticated: boolean;
+  isFav: boolean;
+  onPlayTrack: (id: string) => void;
+  onRemoveTrack: (id: string) => void;
+  onToggleFavorite: (track: ITrack) => void | Promise<void>;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: track.id,
+  });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const isCurrent = track.id === currentTrackId;
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={`group flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-[var(--surface-elevated)] ${
+        isDragging ? "opacity-70" : ""
+      }`}
+    >
+      <button
+        type="button"
+        aria-label="Reordenar"
+        className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted)] hover:text-[var(--foreground)] cursor-grab active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+        onClick={(event) => event.preventDefault()}
+      >
+        <GripVertical size={16} />
+      </button>
+
+      <button
+        type="button"
+        className="flex flex-1 items-center gap-3 text-left"
+        onClick={() => onPlayTrack(track.id)}
+      >
+        <img
+          src={track.thumbnailUrl}
+          alt={track.title}
+          className="h-10 w-10 flex-shrink-0 rounded-lg object-cover"
+        />
+        <div className="min-w-0">
+          <p className={`truncate text-[13px] font-semibold ${isCurrent ? "text-[var(--accent)]" : ""}`}>
+            {track.title}
+          </p>
+          <p className="truncate text-[11px] text-[var(--muted)]">{track.artist}</p>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
+          authenticated
+            ? isFav
+              ? "border-[var(--accent)] text-[var(--accent)]"
+              : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            : "border-[var(--line)] text-[var(--muted)] opacity-40"
+        }`}
+        onClick={(event) => {
+          event.stopPropagation();
+          void onToggleFavorite(track);
+        }}
+        aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
+        title={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
+      >
+        <Heart size={14} fill={isFav ? "currentColor" : "none"} />
+      </button>
+
+      <button
+        type="button"
+        className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-red-500 hover:text-red-500"
+        onClick={(event) => {
+          event.stopPropagation();
+          onRemoveTrack(track.id);
+        }}
+        aria-label="Eliminar de la cola"
+        title="Eliminar de la cola"
+      >
+        <Trash2 size={14} />
+      </button>
+    </li>
+  );
+}
+
 function SidebarIcon({ icon: Icon, label, active, onClick }: SidebarIconProps) {
   return (
     <Tooltip>
@@ -984,6 +1320,23 @@ function SidebarIcon({ icon: Icon, label, active, onClick }: SidebarIconProps) {
       </TooltipTrigger>
       <TooltipContent side="right">{label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+function MobileNavIcon({ icon: Icon, label, active, onClick }: SidebarIconProps) {
+  return (
+    <button
+      type="button"
+      className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-3 py-1.5 text-[10px] transition-colors ${
+        active
+          ? "text-[var(--accent)]"
+          : "text-[var(--muted)] hover:text-[var(--foreground)]"
+      }`}
+      onClick={onClick}
+    >
+      <Icon size={18} />
+      <span>{label}</span>
+    </button>
   );
 }
 

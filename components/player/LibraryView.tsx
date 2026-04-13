@@ -28,7 +28,9 @@ type Props = {
   queue: ITrack[];
   currentTrackId: string | null;
   authenticated?: boolean;
+  favoritedIds?: Set<string>;
   playlists?: Playlist[];
+  onReorder?: (newQueue: ITrack[]) => void;
   onPlayTrack: (id: string) => void;
   onToggleFavorite: (track: ITrack | null) => void | Promise<void>;
   onAddTrackToPlaylist?: (playlistId: string, track: ITrack) => Promise<void> | void;
@@ -38,7 +40,9 @@ export function LibraryView({
   queue,
   currentTrackId,
   authenticated,
+  favoritedIds,
   playlists,
+  onReorder,
   onPlayTrack,
   onToggleFavorite,
   onAddTrackToPlaylist,
@@ -63,12 +67,18 @@ export function LibraryView({
     if (!over) return;
     if (active.id === over.id) return;
 
-    setOrderedQueue((prev) => {
-      const oldIndex = prev.findIndex((t) => t.id === active.id);
-      const newIndex = prev.findIndex((t) => t.id === over.id);
-      if (oldIndex === -1 || newIndex === -1) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
-    });
+    const oldIndex = orderedQueue.findIndex((t) => t.id === active.id);
+    const newIndex = orderedQueue.findIndex((t) => t.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const next = arrayMove(orderedQueue, oldIndex, newIndex);
+    setOrderedQueue(next);
+
+    // Defiere el side-effect para evitar updates sincronos de otro componente
+    // durante el commit/render de DnD en React.
+    if (onReorder) {
+      Promise.resolve().then(() => onReorder(next));
+    }
   };
 
   if (!queue.length) {
@@ -86,7 +96,7 @@ export function LibraryView({
           Biblioteca local ({queue.length})
         </p>
       </div>
-      <div className="max-h-80 overflow-y-auto pr-1">
+      <div className="max-h-[60vh] overflow-y-auto pr-1 sm:max-h-80">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -101,6 +111,7 @@ export function LibraryView({
                   track={track}
                   currentTrackId={currentTrackId}
                   authenticated={authenticated}
+                  isFav={Boolean(favoritedIds?.has(track.id))}
                   playlists={playlists}
                   onPlayTrack={onPlayTrack}
                   onToggleFavorite={onToggleFavorite}
@@ -119,6 +130,7 @@ function SortableLibraryRow({
   track,
   currentTrackId,
   authenticated,
+  isFav,
   playlists,
   onPlayTrack,
   onToggleFavorite,
@@ -127,6 +139,7 @@ function SortableLibraryRow({
   track: ITrack;
   currentTrackId: string | null;
   authenticated?: boolean;
+  isFav: boolean;
   playlists?: Playlist[];
   onPlayTrack: (id: string) => void;
   onToggleFavorite: (track: ITrack | null) => void | Promise<void>;
@@ -182,7 +195,7 @@ function SortableLibraryRow({
       <button
         type="button"
         aria-label="Reordenar"
-        className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:text-[var(--foreground)] cursor-grab active:cursor-grabbing"
+        className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--muted)] hover:text-[var(--foreground)] cursor-grab active:cursor-grabbing sm:h-7 sm:w-7"
         {...attributes}
         {...listeners}
         onClick={(e) => e.preventDefault()}
@@ -213,7 +226,7 @@ function SortableLibraryRow({
         <div className="relative" data-playlist-menu-container>
           <button
             type="button"
-            className={`flex h-7 items-center justify-center gap-1 rounded-full border px-2 text-[11px] transition-colors ${
+            className={`flex h-9 items-center justify-center gap-1 rounded-full border px-2 text-[11px] transition-colors sm:h-7 ${
               canAddToPlaylist
                 ? "border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
                 : "border-[var(--line)] text-[var(--muted)] opacity-40 cursor-not-allowed"
@@ -276,10 +289,14 @@ function SortableLibraryRow({
       {authenticated ? (
         <button
           type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+          className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors sm:h-7 sm:w-7 ${
+            isFav
+              ? "border-[var(--accent)] text-[var(--accent)]"
+              : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+          }`}
           onClick={() => onToggleFavorite(track)}
         >
-          <Heart size={13} />
+          <Heart size={13} fill={isFav ? "currentColor" : "none"} />
         </button>
       ) : (
         <Tooltip>
@@ -288,7 +305,7 @@ function SortableLibraryRow({
               <button
                 type="button"
                 disabled
-                className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] opacity-40 cursor-not-allowed"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] opacity-40 cursor-not-allowed sm:h-7 sm:w-7"
               >
                 <Heart size={13} />
               </button>

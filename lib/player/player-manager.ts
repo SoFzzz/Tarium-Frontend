@@ -59,7 +59,29 @@ export class PlayerManager {
 
   /** Reemplaza por completo la cola actual con la nueva lista. */
   public setQueue(tracks: ITrack[]): void {
-    this.loadQueue(tracks);
+    const currentId = this.playlist.getCurrent()?.id ?? null;
+    const wasPlaying = this.isPlaying;
+    const wasLoading = this.loading;
+    const prevProgressSeconds = this.progressSeconds;
+    const prevDurationSeconds = this.durationSeconds;
+
+    this.playlist.clear();
+
+    for (const track of tracks) {
+      this.playlist.insertAtEnd(track);
+    }
+
+    // Si habia un track actual, mantenerlo como current para no romper la reproduccion en curso.
+    if (currentId) {
+      this.playlist.setCurrentById(currentId);
+    }
+
+    // Reordenar no debe resetear el estado de reproduccion ni el progreso visible.
+    this.isPlaying = wasPlaying;
+    this.loading = wasLoading;
+    this.progressSeconds = prevProgressSeconds;
+    this.durationSeconds = prevDurationSeconds;
+    this.notify();
   }
 
   public addTrack(track: ITrack): void {

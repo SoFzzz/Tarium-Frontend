@@ -26,7 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="es"
       className={`${manrope.variable} ${cormorant.variable} h-full antialiased`}
       suppressHydrationWarning
     >

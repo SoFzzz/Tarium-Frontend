@@ -1,13 +1,14 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User } from '@supabase/supabase-js';
+import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 interface AuthContextType {
   user: User | null;
+  authLoading: boolean;
   loading: boolean;
-  session: any;
+  session: Session | null;
   signUp: (email: string, password: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -18,42 +19,56 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<Session | null>(null);
+  // Solo para bootstrap: evitar flash de user=null con sesion existente.
+  const [authLoading, setAuthLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const loading = authLoading || actionLoading;
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      // Obtener sesión inicial
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }).catch((err) => {
+    let alive = true;
+
+    const init = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (!alive) return;
+        if (error) throw error;
+        setSession(data.session);
+        setUser(data.session?.user ?? null);
+      } catch (err) {
+        if (!alive) return;
         console.error('Error getting session:', err);
         setError('Error al obtener sesión');
-        setLoading(false);
-      });
+        setSession(null);
+        setUser(null);
+      } finally {
+        if (!alive) return;
+        setAuthLoading(false);
+      }
+    };
 
-      // Suscribirse a cambios de autenticación
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange((_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      });
+    void init();
 
-      return () => subscription?.unsubscribe();
-    } catch (err) {
-      console.error('Error in AuthProvider setup:', err);
-      setError('Error al configurar autenticación');
-      setLoading(false);
-    }
+    // Suscribirse a cambios de autenticación
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!alive) return;
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+      setAuthLoading(false);
+      setActionLoading(false);
+    });
+
+    return () => {
+      alive = false;
+      subscription?.unsubscribe();
+    };
   }, []);
 
   const signUp = async (email: string, password: string) => {
-    setLoading(true);
+    setActionLoading(true);
     setError(null);
     try {
       const { error } = await supabase.auth.signUp({
@@ -61,16 +76,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
       if (error) throw error;
-    } catch (err: any) {
-      setError(err.message || 'Error al registrarse');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al registrarse';
+      setError(message);
       console.error('Sign up error:', err);
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
   const signIn = async (email: string, password: string) => {
-    setLoading(true);
+    setActionLoading(true);
     setError(null);
     try {
       const { error } = await supabase.auth.signInWithPassword({
@@ -78,25 +94,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
       if (error) throw error;
-    } catch (err: any) {
-      setError(err.message || 'Error al iniciar sesión');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al iniciar sesión';
+      setError(message);
       console.error('Sign in error:', err);
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
   const signOut = async () => {
-    setLoading(true);
+    setActionLoading(true);
     setError(null);
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-    } catch (err: any) {
-      setError(err.message || 'Error al cerrar sesión');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al cerrar sesión';
+      setError(message);
       console.error('Sign out error:', err);
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -104,6 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        authLoading,
         loading,
         session,
         signUp,
