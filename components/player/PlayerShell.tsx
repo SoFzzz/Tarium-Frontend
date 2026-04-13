@@ -365,7 +365,7 @@ export function PlayerShell() {
                 selectedKeys={currentTrackId === null ? new Set([]) : new Set([currentTrackId])}
               >
                 <Table.Header>
-                  <Table.Column className="text-[10px] uppercase tracking-[0.24em] text-[var(--muted)]">
+                  <Table.Column isRowHeader className="text-[10px] uppercase tracking-[0.24em] text-[var(--muted)]">
                     Track
                   </Table.Column>
                   <Table.Column className="text-[10px] uppercase tracking-[0.24em] text-[var(--muted)]">
