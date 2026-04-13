@@ -3,6 +3,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
 import { authenticatedFetch } from '@/lib/api';
+import { usePersistenceAdapter } from '@/lib/persistence';
+import type { PersistedPlaylist } from '@/lib/persistence/types';
 
 export interface Playlist {
   id: string;
@@ -47,14 +49,26 @@ export function usePlaylists(): UsePlaylists {
   const [error, setError] = useState<string | null>(null);
 
   const token = session?.access_token;
+  const persistence = usePersistenceAdapter();
 
   const getPlaylists = useCallback(async () => {
-    if (!token) return;
-
     setLoading(true);
     setError(null);
 
     try {
+      if (!token) {
+        const stored = await persistence.getPlaylists();
+        const mapped: Playlist[] = stored.map((p) => ({
+          id: p.id,
+          user_id: 'guest',
+          name: p.name,
+          created_at: p.created_at,
+          updated_at: p.updated_at,
+        }));
+        setPlaylists(mapped);
+        return;
+      }
+
       const data = await authenticatedFetch('/api/playlists', token);
       setPlaylists(data || []);
     } catch (err) {
@@ -64,16 +78,42 @@ export function usePlaylists(): UsePlaylists {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [persistence, token]);
 
   const createPlaylist = useCallback(
     async (name: string): Promise<Playlist> => {
-      if (!token) throw new Error('No autenticado');
-
       setLoading(true);
       setError(null);
 
       try {
+        if (!token) {
+          const existing = await persistence.getPlaylists();
+          const now = new Date().toISOString();
+          const id = `guest-playlist-${Date.now().toString(36)}`;
+
+          const persisted: PersistedPlaylist = {
+            id,
+            name,
+            created_at: now,
+            updated_at: now,
+            tracks: [],
+          };
+
+          const updated = [...existing, persisted];
+          await persistence.savePlaylists(updated);
+
+          const playlist: Playlist = {
+            id,
+            user_id: 'guest',
+            name,
+            created_at: now,
+            updated_at: now,
+          };
+
+          setPlaylists([...playlists, playlist]);
+          return playlist;
+        }
+
         const data = await authenticatedFetch('/api/playlists', token, {
           method: 'POST',
           body: JSON.stringify({ name }),
@@ -88,14 +128,32 @@ export function usePlaylists(): UsePlaylists {
         setLoading(false);
       }
     },
-    [token, playlists]
+    [persistence, playlists, token]
   );
 
   const getPlaylistTracks = useCallback(
     async (playlistId: string): Promise<PlaylistTrack[]> => {
-      if (!token) throw new Error('No autenticado');
-
       try {
+        if (!token) {
+          const stored = await persistence.getPlaylists();
+          const playlist = stored.find((p) => p.id === playlistId);
+          if (!playlist) return [];
+
+          const mapped: PlaylistTrack[] = playlist.tracks.map((t) => ({
+            id: t.id,
+            playlist_id: t.playlist_id,
+            user_id: 'guest',
+            track_id: t.track_id,
+            title: t.title,
+            artist: t.artist,
+            thumbnail_url: t.thumbnail_url,
+            duration_seconds: t.duration_seconds,
+            position: t.position,
+            added_at: t.added_at,
+          }));
+          return mapped;
+        }
+
         const data = await authenticatedFetch(`/api/playlists/${playlistId}/tracks`, token);
         return data || [];
       } catch (err) {
@@ -103,7 +161,7 @@ export function usePlaylists(): UsePlaylists {
         throw err;
       }
     },
-    [token]
+    [persistence, token]
   );
 
   const addTrackToPlaylist = useCallback(
@@ -111,12 +169,55 @@ export function usePlaylists(): UsePlaylists {
       playlistId: string,
       track: Omit<PlaylistTrack, 'id' | 'playlist_id' | 'user_id' | 'position' | 'added_at'>
     ): Promise<PlaylistTrack> => {
-      if (!token) throw new Error('No autenticado');
-
       setLoading(true);
       setError(null);
 
       try {
+        if (!token) {
+          const existing = await persistence.getPlaylists();
+          const target = existing.find((p) => p.id === playlistId);
+          if (!target) {
+            throw new Error('Playlist no encontrada en modo guest');
+          }
+
+          const now = new Date().toISOString();
+          const trackId = `${playlistId}-${track.track_id}`;
+
+          const newTrack = {
+            id: trackId,
+            playlist_id: playlistId,
+            track_id: track.track_id,
+            title: track.title,
+            artist: track.artist,
+            album: undefined,
+            thumbnail_url: track.thumbnail_url,
+            duration_seconds: track.duration_seconds,
+            position: target.tracks.length,
+            added_at: now,
+          };
+
+          const updatedPlaylists = existing.map((p) =>
+            p.id === playlistId ? { ...p, tracks: [...p.tracks, newTrack] } : p,
+          );
+
+          await persistence.savePlaylists(updatedPlaylists);
+
+          const playlistTrack: PlaylistTrack = {
+            id: newTrack.id,
+            playlist_id: playlistId,
+            user_id: 'guest',
+            track_id: newTrack.track_id,
+            title: newTrack.title,
+            artist: newTrack.artist,
+            thumbnail_url: newTrack.thumbnail_url,
+            duration_seconds: newTrack.duration_seconds,
+            position: newTrack.position,
+            added_at: newTrack.added_at,
+          };
+
+          return playlistTrack;
+        }
+
         const data = await authenticatedFetch(`/api/playlists/${playlistId}/tracks`, token, {
           method: 'POST',
           body: JSON.stringify(track),
@@ -130,17 +231,26 @@ export function usePlaylists(): UsePlaylists {
         setLoading(false);
       }
     },
-    [token]
+    [persistence, token]
   );
 
   const removeTrackFromPlaylist = useCallback(
     async (playlistId: string, trackId: string): Promise<void> => {
-      if (!token) throw new Error('No autenticado');
-
       setLoading(true);
       setError(null);
 
       try {
+        if (!token) {
+          const existing = await persistence.getPlaylists();
+          const updated = existing.map((p) =>
+            p.id === playlistId
+              ? { ...p, tracks: p.tracks.filter((t) => t.track_id !== trackId) }
+              : p,
+          );
+          await persistence.savePlaylists(updated);
+          return;
+        }
+
         await authenticatedFetch(`/api/playlists/${playlistId}/tracks/${trackId}`, token, {
           method: 'DELETE',
         });
@@ -152,17 +262,23 @@ export function usePlaylists(): UsePlaylists {
         setLoading(false);
       }
     },
-    [token]
+    [persistence, token]
   );
 
   const deletePlaylist = useCallback(
     async (playlistId: string): Promise<void> => {
-      if (!token) throw new Error('No autenticado');
-
       setLoading(true);
       setError(null);
 
       try {
+        if (!token) {
+          const existing = await persistence.getPlaylists();
+          const updated = existing.filter((p) => p.id !== playlistId);
+          await persistence.savePlaylists(updated);
+          setPlaylists(playlists.filter((p) => p.id !== playlistId));
+          return;
+        }
+
         await authenticatedFetch(`/api/playlists/${playlistId}`, token, {
           method: 'DELETE',
         });
@@ -175,15 +291,13 @@ export function usePlaylists(): UsePlaylists {
         setLoading(false);
       }
     },
-    [token, playlists]
+    [persistence, playlists, token]
   );
 
-  // Cargar playlists cuando el token está disponible
+  // Cargar playlists tanto en guest (localStorage) como autenticado (backend)
   useEffect(() => {
-    if (token) {
-      getPlaylists();
-    }
-  }, [token, getPlaylists]);
+    void getPlaylists();
+  }, [getPlaylists]);
 
   return {
     playlists,

@@ -2,6 +2,8 @@ import type { MediaAdapter } from "./media-adapter";
 import { DoublyLinkedList } from "./structures/doubly-linked-list";
 import type { ITrack, PlaybackState } from "./types";
 
+export type HistoryListener = (track: ITrack) => void;
+
 type Subscriber = (state: PlaybackState) => void;
 
 export class PlayerManager {
@@ -12,6 +14,7 @@ export class PlayerManager {
   private mediaAdapter: MediaAdapter | null;
   private subscribers = new Set<Subscriber>();
   private snapshot: PlaybackState;
+  private historyListeners = new Set<HistoryListener>();
 
   constructor(initialTracks: ITrack[] = [], mediaAdapter: MediaAdapter | null = null) {
     this.playlist = new DoublyLinkedList<ITrack>((track) => track.id);
@@ -91,6 +94,11 @@ export class PlayerManager {
     try {
       await this.mediaAdapter?.play(currentTrack);
       this.isPlaying = true;
+
+      // Registrar en historial solo cuando realmente empieza a reproducirse.
+      for (const listener of this.historyListeners) {
+        listener(currentTrack);
+      }
     } finally {
       this.loading = false;
       this.notify();
@@ -198,6 +206,14 @@ export class PlayerManager {
 
     return () => {
       this.subscribers.delete(listener);
+    };
+  }
+
+  /** Permite que un consumidor (hook de historial) se suscriba a reproducciones reales. */
+  public onTrackPlay(listener: HistoryListener): () => void {
+    this.historyListeners.add(listener);
+    return () => {
+      this.historyListeners.delete(listener);
     };
   }
 

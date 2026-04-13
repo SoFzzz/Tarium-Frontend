@@ -19,6 +19,7 @@ import { usePlayer } from "@/providers/PlayerProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { usePlaylists } from "@/hooks/usePlaylists";
 import { useFavorites } from "@/hooks/useFavorites";
+import { SearchPanel } from "@/components/SearchPanel";
 import { useState } from "react";
 
 const formatDuration = (seconds?: number) => {
@@ -342,7 +343,7 @@ export function PlayerShell() {
           </div>
         </div>
 
-        <aside className="fade-rise flex min-h-0 flex-col px-4 py-4 sm:px-5 sm:py-5">
+        <aside className="fade-rise flex min-h-0 flex-col gap-4 px-4 py-4 sm:px-5 sm:py-5">
           <div className="rounded-[1.6rem] border border-white/8 bg-[rgba(12,10,12,0.22)] p-4 backdrop-blur-xl">
             <div className="mb-4 flex items-end justify-between gap-4">
               <div>
@@ -436,6 +437,13 @@ export function PlayerShell() {
                 </Table.Body>
               </Table.Content>
             </Table>
+          </div>
+
+          <div className="rounded-[1.6rem] border border-white/8 bg-[rgba(12,10,12,0.22)] p-4 backdrop-blur-xl">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.34em] text-[var(--muted)]">
+              YouTube search
+            </p>
+            <SearchPanel />
           </div>
         </aside>
       </section>

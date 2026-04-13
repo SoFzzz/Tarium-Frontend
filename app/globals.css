@@ -1,15 +1,25 @@
 @import "@heroui/styles";
 
 :root {
-  --background: #140f11;
-  --foreground: #f6efe7;
-  --surface: rgba(31, 23, 27, 0.72);
-  --surface-strong: rgba(43, 31, 36, 0.88);
-  --muted: rgba(242, 226, 211, 0.68);
-  --accent: #f4b26f;
-  --accent-strong: #ff8e45;
-  --line: rgba(255, 255, 255, 0.08);
-  --shadow: 0 24px 80px rgba(6, 3, 4, 0.45);
+  /* Calcite-based palette */
+  --background: #1a1b1c; /* dark anchor with good contrast vs #DDDCD8 */
+  --foreground: #dddcd8; /* base light text */
+
+  --surface: #edbf9b; /* warm surfaces */
+  --surface-strong: #f2cbaa;
+  --surface-soft: rgba(237, 191, 155, 0.18);
+
+  --muted: #b3b1ac;
+
+  --accent: #fd7b41; /* primary interactive */
+  --accent-strong: #e25e26;
+  --accent-soft: rgba(253, 123, 65, 0.22);
+
+  --control: #3c4044;
+  --control-soft: rgba(60, 64, 68, 0.12);
+
+  --line: rgba(60, 64, 68, 0.38);
+  --shadow: 0 24px 80px rgba(8, 8, 10, 0.55);
 }
 
 @theme inline {
@@ -25,9 +35,9 @@
 
 html {
   background:
-    radial-gradient(circle at top left, rgba(255, 150, 78, 0.18), transparent 30%),
-    radial-gradient(circle at 80% 20%, rgba(255, 214, 162, 0.12), transparent 26%),
-    linear-gradient(145deg, #120d10 0%, #1a1215 38%, #0f0d10 100%);
+    radial-gradient(circle at top left, rgba(253, 123, 65, 0.16), transparent 30%),
+    radial-gradient(circle at 80% 20%, rgba(237, 191, 155, 0.24), transparent 30%),
+    linear-gradient(145deg, #171819 0%, #222325 40%, #18191a 100%);
 }
 
 body {
@@ -46,7 +56,7 @@ button {
 }
 
 ::selection {
-  background: rgba(244, 178, 111, 0.28);
+  background: rgba(253, 123, 65, 0.32);
 }
 
 .player-shell::before {
@@ -54,8 +64,8 @@ button {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at top right, rgba(255, 152, 92, 0.22), transparent 34%),
-    radial-gradient(circle at bottom left, rgba(253, 197, 141, 0.16), transparent 24%);
+    radial-gradient(circle at top right, rgba(253, 123, 65, 0.26), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(237, 191, 155, 0.22), transparent 24%);
   pointer-events: none;
 }
 
@@ -65,7 +75,7 @@ button {
   border-radius: 999px;
   filter: blur(64px);
   opacity: 0.55;
-  background: radial-gradient(circle, rgba(255, 159, 96, 0.58), transparent 68%);
+  background: radial-gradient(circle, rgba(253, 123, 65, 0.6), transparent 68%);
 }
 
 .fade-rise {
