@@ -44,7 +44,6 @@ export function SearchPanel() {
         <Button
           type="submit"
           size="sm"
-          radius="full"
           isDisabled={!query.trim() || loading}
         >
           {loading ? <Spinner size="sm" /> : "Buscar"}
