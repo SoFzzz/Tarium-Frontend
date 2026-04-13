@@ -5,11 +5,9 @@ import { useMemo } from "react";
 import { useAuth } from "@/providers/AuthProvider";
 import type { PersistenceAdapter } from "./types";
 import { LocalStorageAdapter } from "./LocalStorageAdapter";
-import { RemoteAdapter } from "./RemoteAdapter";
 
-// Placeholder para futuro RemoteAdapter (authenticated).
-// Por ahora solo devolvemos LocalStorageAdapter cuando no hay sesión,
-// y dejamos el caso autenticado al backend actual.
+// Nota: este proyecto no incluye backend REST.
+// La persistencia autenticada se implementa directo con Supabase desde hooks.
 
 export function usePersistenceAdapter(): PersistenceAdapter {
   const { session } = useAuth();
@@ -20,8 +18,9 @@ export function usePersistenceAdapter(): PersistenceAdapter {
       return new LocalStorageAdapter();
     }
 
-    // Authenticated mode: Render + Supabase vía backend.
-    return new RemoteAdapter(session.access_token);
+    // BUGS.txt: No hay backend REST en este proyecto.
+    // Para evitar intentos de fetch a /api/*, usamos el mismo adapter local.
+    return new LocalStorageAdapter();
   }, [session]);
 
   return adapter;

@@ -1,6 +1,6 @@
 import type { MediaAdapter } from "./media-adapter";
 import { DoublyLinkedList } from "./structures/doubly-linked-list";
-import type { ITrack, PlaybackState } from "./types";
+import type { ITrack, PlaybackState, RepeatMode } from "./types";
 
 export type HistoryListener = (track: ITrack) => void;
 
@@ -17,6 +17,7 @@ export class PlayerManager {
   private historyListeners = new Set<HistoryListener>();
   private progressSeconds = 0;
   private durationSeconds = 0;
+  private repeatMode: RepeatMode = "off";
 
   constructor(initialTracks: ITrack[] = [], mediaAdapter: MediaAdapter | null = null) {
     this.playlist = new DoublyLinkedList<ITrack>((track) => track.id);
@@ -29,7 +30,7 @@ export class PlayerManager {
 
     if (this.mediaAdapter?.onEnded) {
       this.mediaAdapter.onEnded(() => {
-        void this.playNext();
+        void this.handleEnded();
       });
     }
 
@@ -157,6 +158,10 @@ export class PlayerManager {
     if (track === null) {
       return null;
     }
+    // Al cambiar de pista, reseteamos el progreso y la duración visibles
+    this.progressSeconds = 0;
+    this.durationSeconds = 0;
+    this.notify();
 
     await this.play();
     return track;
@@ -168,6 +173,9 @@ export class PlayerManager {
     if (track === null) {
       return null;
     }
+    this.progressSeconds = 0;
+    this.durationSeconds = 0;
+    this.notify();
 
     await this.play();
     return track;
@@ -179,6 +187,9 @@ export class PlayerManager {
     if (track === null) {
       return null;
     }
+    this.progressSeconds = 0;
+    this.durationSeconds = 0;
+    this.notify();
 
     await this.play();
     return track;
@@ -227,6 +238,15 @@ export class PlayerManager {
     this.notify();
   }
 
+  public cycleRepeatMode(): void {
+    this.repeatMode = this.repeatMode === "off" ? "all" : this.repeatMode === "all" ? "one" : "off";
+    this.notify();
+  }
+
+  public getRepeatMode(): RepeatMode {
+    return this.repeatMode;
+  }
+
   public getState(): PlaybackState {
     return this.snapshot;
   }
@@ -261,6 +281,7 @@ export class PlayerManager {
       isPlaying: this.isPlaying,
       loading: this.loading,
       volume: this.volume,
+      repeatMode: this.repeatMode,
       currentTrack: this.playlist.getCurrent(),
       queue: this.playlist.toArray(),
       progressSeconds: this.progressSeconds,
@@ -268,5 +289,30 @@ export class PlayerManager {
       error: null,
       canPlay: true,
     };
+  }
+
+  private async handleEnded(): Promise<void> {
+    const queue = this.playlist.toArray();
+    const current = this.playlist.getCurrent();
+
+    if (!current) {
+      return;
+    }
+
+    const isLastTrack = queue.length > 0 && queue[queue.length - 1]?.id === current.id;
+
+    if (this.repeatMode === "one") {
+      await this.play();
+      return;
+    }
+
+    if (this.repeatMode === "all" && isLastTrack) {
+      const first = queue[0];
+      if (!first) return;
+      await this.playById(first.id);
+      return;
+    }
+
+    await this.playNext();
   }
 }

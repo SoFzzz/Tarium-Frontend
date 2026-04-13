@@ -2,9 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
-import { authenticatedFetch } from '@/lib/api';
-import { usePersistenceAdapter } from '@/lib/persistence';
-import type { PersistedFavorite } from '@/lib/persistence/types';
+import { supabase } from '@/lib/supabase';
 
 export interface Favorite {
   id: string;
@@ -27,38 +25,37 @@ interface UseFavorites {
 }
 
 export function useFavorites(): UseFavorites {
-  const { session } = useAuth();
-  const persistence = usePersistenceAdapter();
+  const { session, user } = useAuth();
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const token = session?.access_token;
+  const userId = session?.user?.id as string | undefined;
 
   const getFavorites = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      if (!token) {
-        // Guest: leer desde localStorage.
-        const stored = await persistence.getFavorites();
-        const mapped: Favorite[] = stored.map((f) => ({
-          id: f.track_id,
-          user_id: 'guest',
-          track_id: f.track_id,
-          title: f.title,
-          artist: f.artist,
-          thumbnail_url: f.thumbnail_url,
-          created_at: f.created_at,
-        }));
-        setFavorites(mapped);
+      // Sin login: no montar/llamar a queries de Supabase.
+      if (!user) {
+        setFavorites([]);
         return;
       }
 
-      // Authenticated: backend actual.
-      const data = await authenticatedFetch('/api/favorites', token);
-      setFavorites(data || []);
+      if (!userId) {
+        setFavorites([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('favorites')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setFavorites((data ?? []) as Favorite[]);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al obtener favoritos';
       setError(message);
@@ -66,7 +63,7 @@ export function useFavorites(): UseFavorites {
     } finally {
       setLoading(false);
     }
-  }, [persistence, token]);
+  }, [user, userId]);
 
   const addFavorite = useCallback(
     async (track: Omit<Favorite, 'id' | 'user_id' | 'created_at'>): Promise<Favorite> => {
@@ -74,53 +71,30 @@ export function useFavorites(): UseFavorites {
       setError(null);
 
       try {
-        if (!token) {
-          // Guest: persistir en localStorage.
-          const existing = await persistence.getFavorites();
-          const now = new Date().toISOString();
-          const newEntry: PersistedFavorite = {
+        if (!user) {
+          throw new Error('No hay sesion activa');
+        }
+
+        if (!userId) {
+          throw new Error('No hay sesion activa');
+        }
+
+        const { data, error } = await supabase
+          .from('favorites')
+          .insert({
+            user_id: userId,
             track_id: track.track_id,
             title: track.title,
             artist: track.artist,
-            album: undefined,
             thumbnail_url: track.thumbnail_url,
-            duration_seconds: undefined,
-            created_at: now,
-          };
+          })
+          .select('*')
+          .single();
 
-          const updated = [...existing.filter((f) => f.track_id !== newEntry.track_id), newEntry];
-          await persistence.saveFavorites(updated);
-
-          setFavorites([
-            ...favorites.filter((f) => f.track_id !== newEntry.track_id),
-            {
-              id: newEntry.track_id,
-              user_id: 'guest',
-              track_id: newEntry.track_id,
-              title: newEntry.title,
-              artist: newEntry.artist,
-              thumbnail_url: newEntry.thumbnail_url,
-              created_at: newEntry.created_at,
-            },
-          ]);
-
-          return {
-            id: newEntry.track_id,
-            user_id: 'guest',
-            track_id: newEntry.track_id,
-            title: newEntry.title,
-            artist: newEntry.artist,
-            thumbnail_url: newEntry.thumbnail_url,
-            created_at: newEntry.created_at,
-          };
-        }
-
-        const data = await authenticatedFetch('/api/favorites', token, {
-          method: 'POST',
-          body: JSON.stringify(track),
-        });
-        setFavorites([...favorites, data]);
-        return data;
+        if (error) throw error;
+        const created = data as Favorite;
+        setFavorites((prev) => [created, ...prev.filter((f) => f.track_id !== created.track_id)]);
+        return created;
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error al agregar favorito';
         setError(message);
@@ -129,7 +103,7 @@ export function useFavorites(): UseFavorites {
         setLoading(false);
       }
     },
-    [favorites, persistence, token]
+    [user, userId]
   );
 
   const removeFavorite = useCallback(
@@ -138,19 +112,22 @@ export function useFavorites(): UseFavorites {
       setError(null);
 
       try {
-        if (!token) {
-          // Guest: eliminar desde localStorage.
-          const existing = await persistence.getFavorites();
-          const updated = existing.filter((f) => f.track_id !== trackId);
-          await persistence.saveFavorites(updated);
-          setFavorites(favorites.filter((f) => f.track_id !== trackId));
-          return;
+        if (!user) {
+          throw new Error('No hay sesion activa');
         }
 
-        await authenticatedFetch(`/api/favorites/${trackId}`, token, {
-          method: 'DELETE',
-        });
-        setFavorites(favorites.filter((f) => f.track_id !== trackId));
+        if (!userId) {
+          throw new Error('No hay sesion activa');
+        }
+
+        const { error } = await supabase
+          .from('favorites')
+          .delete()
+          .eq('user_id', userId)
+          .eq('track_id', trackId);
+
+        if (error) throw error;
+        setFavorites((prev) => prev.filter((f) => f.track_id !== trackId));
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error al remover favorito';
         setError(message);
@@ -159,7 +136,7 @@ export function useFavorites(): UseFavorites {
         setLoading(false);
       }
     },
-    [favorites, persistence, token]
+    [user, userId]
   );
 
   const isFavorite = useCallback(
@@ -167,10 +144,14 @@ export function useFavorites(): UseFavorites {
     [favorites]
   );
 
-  // Cargar favoritos tanto en guest (localStorage) como autenticado (backend)
   useEffect(() => {
+    if (!user) {
+      setFavorites([]);
+      return;
+    }
+
     void getFavorites();
-  }, [getFavorites]);
+  }, [user, getFavorites]);
 
   return {
     favorites,

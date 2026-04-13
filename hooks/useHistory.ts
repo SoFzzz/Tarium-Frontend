@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect } from 'react';
 
 import { useAuth } from '@/providers/AuthProvider';
-import { authenticatedFetch } from '@/lib/api';
 import { usePersistenceAdapter } from '@/lib/persistence';
 import type { PersistedHistoryEntry } from '@/lib/persistence/types';
 
@@ -28,12 +27,11 @@ interface UseHistory {
 }
 
 export function useHistory(): UseHistory {
-  const { session } = useAuth();
+  const { user } = useAuth();
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const token = session?.access_token;
   const persistence = usePersistenceAdapter();
 
   const getRecent = useCallback(async () => {
@@ -41,17 +39,17 @@ export function useHistory(): UseHistory {
     setError(null);
 
     try {
-      if (!token) {
-        const stored = await persistence.getHistory();
-        const mapped: HistoryEntry[] = stored
-          .slice()
-          .sort((a, b) => (a.last_played_at < b.last_played_at ? 1 : -1));
-        setHistory(mapped);
+      // BUGS.txt: No hay backend REST para historial. Mantener solo guest/local.
+      if (user) {
+        setHistory([]);
         return;
       }
 
-      const data = await authenticatedFetch('/api/history/recent', token);
-      setHistory(data || []);
+      const stored = await persistence.getHistory();
+      const mapped: HistoryEntry[] = stored
+        .slice()
+        .sort((a, b) => (a.last_played_at < b.last_played_at ? 1 : -1));
+      setHistory(mapped);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al obtener historial';
       setError(message);
@@ -59,7 +57,7 @@ export function useHistory(): UseHistory {
     } finally {
       setLoading(false);
     }
-  }, [persistence, token]);
+  }, [persistence, user]);
 
   const registerPlay = useCallback(
     async (
@@ -71,50 +69,45 @@ export function useHistory(): UseHistory {
       try {
         const now = new Date().toISOString();
 
-        if (!token) {
-          // Guest: upsert local por track_id.
-          const existing = await persistence.getHistory();
-          const index = existing.findIndex((h) => h.track_id === entry.track_id);
-
-          if (index === -1) {
-            const created: PersistedHistoryEntry = {
-              track_id: entry.track_id,
-              title: entry.title,
-              artist: entry.artist,
-              album: entry.album,
-              thumbnail_url: entry.thumbnail_url,
-              duration_seconds: entry.duration_seconds,
-              play_count: 1,
-              last_played_at: now,
-              created_at: now,
-            };
-            const updated = [...existing, created];
-            await persistence.saveHistory(updated);
-          } else {
-            const current = existing[index];
-            const updatedEntry: PersistedHistoryEntry = {
-              ...current,
-              title: entry.title,
-              artist: entry.artist,
-              album: entry.album,
-              thumbnail_url: entry.thumbnail_url,
-              duration_seconds: entry.duration_seconds,
-              play_count: current.play_count + 1,
-              last_played_at: now,
-            };
-            const updated = [...existing];
-            updated[index] = updatedEntry;
-            await persistence.saveHistory(updated);
-          }
-
-          await getRecent();
+        // BUGS.txt: No hay backend REST para historial. Mantener solo guest/local.
+        if (user) {
           return;
         }
 
-        await authenticatedFetch('/api/history/play', token, {
-          method: 'POST',
-          body: JSON.stringify(entry),
-        });
+        // Guest: upsert local por track_id.
+        const existing = await persistence.getHistory();
+        const index = existing.findIndex((h) => h.track_id === entry.track_id);
+
+        if (index === -1) {
+          const created: PersistedHistoryEntry = {
+            track_id: entry.track_id,
+            title: entry.title,
+            artist: entry.artist,
+            album: entry.album,
+            thumbnail_url: entry.thumbnail_url,
+            duration_seconds: entry.duration_seconds,
+            play_count: 1,
+            last_played_at: now,
+            created_at: now,
+          };
+          const updated = [...existing, created];
+          await persistence.saveHistory(updated);
+        } else {
+          const current = existing[index];
+          const updatedEntry: PersistedHistoryEntry = {
+            ...current,
+            title: entry.title,
+            artist: entry.artist,
+            album: entry.album,
+            thumbnail_url: entry.thumbnail_url,
+            duration_seconds: entry.duration_seconds,
+            play_count: current.play_count + 1,
+            last_played_at: now,
+          };
+          const updated = [...existing];
+          updated[index] = updatedEntry;
+          await persistence.saveHistory(updated);
+        }
 
         await getRecent();
       } catch (err) {
@@ -125,7 +118,7 @@ export function useHistory(): UseHistory {
         setLoading(false);
       }
     },
-    [getRecent, persistence, token],
+    [getRecent, persistence, user],
   );
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import {
   Clock3,
   ListMusic,
@@ -19,6 +20,8 @@ import {
   Sun,
   Moon,
   Shuffle,
+  Repeat,
+  Repeat1,
 } from "lucide-react";
 
 import { usePlayer } from "@/providers/PlayerProvider";
@@ -36,14 +39,16 @@ import { Slider } from "@/components/ui/slider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTheme } from "next-themes";
+import { AuthModalControlled } from "@/components/auth/AuthModal";
 
 const formatDuration = (seconds?: number) => {
   if (seconds === undefined) {
     return "--:--";
   }
 
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
+  const s = Math.floor(seconds);
+  const mins = Math.floor(s / 60);
+  const secs = s % 60;
 
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 };
@@ -53,17 +58,79 @@ export function PlayerShell() {
   const { user, signOut } = useAuth();
   const { playlists, createPlaylist, getPlaylistTracks, addTrackToPlaylist, removeTrackFromPlaylist, deletePlaylist } = usePlaylists();
   const { favorites, addFavorite, removeFavorite, isFavorite } = useFavorites();
+
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  const [createPlaylistOpen, setCreatePlaylistOpen] = useState(false);
+  const [createPlaylistName, setCreatePlaylistName] = useState("");
+  const [createPlaylistLoading, setCreatePlaylistLoading] = useState(false);
+
+  const [deletePlaylistOpen, setDeletePlaylistOpen] = useState(false);
+  const [deletePlaylistId, setDeletePlaylistId] = useState<string | null>(null);
+  const [deletePlaylistLoading, setDeletePlaylistLoading] = useState(false);
   
   const [activeView, setActiveView] = useState<"home" | "library" | "favorites" | "playlists">("home");
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [playlistTracks, setPlaylistTracks] = useState<PlaylistTrack[] | null>(null);
   const [loadingPlaylistTracks, setLoadingPlaylistTracks] = useState(false);
-  const [isShuffleEnabled, setIsShuffleEnabled] = useState(false);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [seekValue, setSeekValue] = useState<number | null>(null);
+  const [displayProgress, setDisplayProgress] = useState(0);
+
+  const [volume, setVolume] = useState(() => actions.getState().volume ?? 70);
   
   const currentTrack = state.currentTrack;
   const queue = state.queue;
   const currentTrackId = currentTrack?.id ?? null;
   const isCurrentTrackFavorite = currentTrack ? isFavorite(currentTrack.id) : false;
+
+  useEffect(() => {
+    if (user) {
+      setAuthModalOpen(false);
+    }
+  }, [user]);
+
+  // Si cambia el track actual, reseteamos cualquier estado de seek manual
+  useEffect(() => {
+    setIsSeeking(false);
+    setSeekValue(null);
+    setDisplayProgress(0);
+  }, [currentTrackId]);
+
+  // Barra de progreso más fluida: interpolamos visualmente con RAF.
+  // Mantenemos el valor real (state.progressSeconds) como fuente de verdad para sincronización.
+  useEffect(() => {
+    if (!state.isPlaying || isSeeking) return;
+
+    let raf: number;
+    let lastTs: number | null = null;
+    const tick = () => {
+      setDisplayProgress((prev) => {
+        if (state.durationSeconds <= 0) return prev;
+        // Avanzar según el tiempo real entre frames.
+        const now = performance.now();
+        const deltaSeconds = lastTs === null ? 0 : (now - lastTs) / 1000;
+        lastTs = now;
+        return Math.min(prev + deltaSeconds, state.durationSeconds);
+      });
+      raf = requestAnimationFrame(tick);
+    };
+
+    lastTs = performance.now();
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [state.isPlaying, isSeeking, state.durationSeconds]);
+
+  // Sincronizar con el valor real cada vez que Howler/PlayerManager actualiza.
+  useEffect(() => {
+    if (isSeeking) return;
+    setDisplayProgress(state.progressSeconds);
+  }, [state.progressSeconds, isSeeking]);
+
+  // El slider de volumen debe tener estado propio (no depender de re-renders por progreso).
+  useEffect(() => {
+    setVolume(state.volume);
+  }, [state.volume]);
 
   const handleLocalDropzoneTracksParsed = (localTracks: LocalTrack[]) => {
     const mapped = localTracks.map(mapLocalTrackToITrack);
@@ -81,6 +148,12 @@ export function PlayerShell() {
 
   const handleAddToFavorites = async () => {
     if (!currentTrack) return;
+
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+
     try {
       if (isCurrentTrackFavorite) {
         await removeFavorite(currentTrack.id);
@@ -97,13 +170,34 @@ export function PlayerShell() {
     }
   };
 
-  const handleCreatePlaylist = async () => {
-    const name = window.prompt("Nombre de la nueva playlist");
-    if (!name || !name.trim()) return;
+  const handleRequestCreatePlaylist = () => {
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+
+    setCreatePlaylistName("");
+    setCreatePlaylistOpen(true);
+  };
+
+  const handleConfirmCreatePlaylist = async () => {
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+
+    const trimmed = createPlaylistName.trim();
+    if (!trimmed) return;
+
     try {
-      await createPlaylist(name.trim());
+      setCreatePlaylistLoading(true);
+      await createPlaylist(trimmed);
+      setCreatePlaylistOpen(false);
+      setCreatePlaylistName("");
     } catch (err) {
       console.error("Error creating playlist:", err);
+    } finally {
+      setCreatePlaylistLoading(false);
     }
   };
 
@@ -152,6 +246,12 @@ export function PlayerShell() {
 
   const handleAddCurrentTrackToPlaylist = async () => {
     if (!selectedPlaylistId || !currentTrack) return;
+
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+
     try {
       await addTrackToPlaylist(selectedPlaylistId, {
         track_id: currentTrack.id,
@@ -179,27 +279,51 @@ export function PlayerShell() {
     }
   };
 
-  const handleDeletePlaylist = async (playlistId: string) => {
-    if (!window.confirm("¿Eliminar esta playlist?")) return;
+  const handleRequestDeletePlaylist = (playlistId: string) => {
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+
+    setDeletePlaylistId(playlistId);
+    setDeletePlaylistOpen(true);
+  };
+
+  const handleConfirmDeletePlaylist = async () => {
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+
+    if (!deletePlaylistId) return;
+
     try {
-      await deletePlaylist(playlistId);
-      if (selectedPlaylistId === playlistId) {
+      setDeletePlaylistLoading(true);
+      await deletePlaylist(deletePlaylistId);
+      if (selectedPlaylistId === deletePlaylistId) {
         setSelectedPlaylistId(null);
         setPlaylistTracks(null);
       }
+      setDeletePlaylistOpen(false);
+      setDeletePlaylistId(null);
     } catch (err) {
       console.error("Error deleting playlist:", err);
+    } finally {
+      setDeletePlaylistLoading(false);
     }
   };
 
-  const handleToggleShuffle = () => {
-    if (!isShuffleEnabled) {
-      if (queue.length >= 2) {
-        actions.shuffle();
-      }
-      setIsShuffleEnabled(true);
-    } else {
-      setIsShuffleEnabled(false);
+  const handleShuffleClick = () => {
+    if (state.loading || queue.length < 2) return;
+
+    actions.shuffle();
+
+    // Tras barajar, usamos el estado más reciente del reproductor
+    const latest = actions.getState();
+    const first = latest.queue[0];
+
+    if (first && !latest.isPlaying) {
+      void actions.playById(first.id);
     }
   };
 
@@ -240,8 +364,8 @@ export function PlayerShell() {
             </nav>
           </div>
 
-          <div className="flex flex-col items-center gap-4">
-            {user && (
+            <div className="flex flex-col items-center gap-4">
+            {user ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -253,6 +377,19 @@ export function PlayerShell() {
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>Cerrar sesión</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] bg-[var(--surface-elevated)] text-xs text-[var(--muted)] hover:text-[var(--foreground)]"
+                    onClick={() => setAuthModalOpen(true)}
+                  >
+                    <User size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Iniciar sesión</TooltipContent>
               </Tooltip>
             )}
           </div>
@@ -365,7 +502,10 @@ export function PlayerShell() {
                         <div className="flex items-center gap-2">
                           <Clock3 size={14} />
                           <span>
-                            {formatDuration(state.progressSeconds)} / {formatDuration(state.durationSeconds)}
+                            {formatDuration(
+                              isSeeking && seekValue !== null ? seekValue : displayProgress,
+                            )}{" "}
+                            / {formatDuration(state.durationSeconds)}
                           </span>
                         </div>
                         <div className="hidden items-center gap-2 sm:flex">
@@ -375,11 +515,24 @@ export function PlayerShell() {
                       </div>
 
                       <Slider
-                        value={state.durationSeconds > 0 ? [state.progressSeconds] : [0]}
+                        value={
+                          state.durationSeconds > 0
+                            ? [isSeeking && seekValue !== null ? seekValue : displayProgress]
+                            : [0]
+                        }
                         max={state.durationSeconds || 0}
                         step={1}
                         disabled={state.durationSeconds <= 0}
-                        onValueChange={([val]) => actions.seek(val)}
+                        onValueChange={([val]) => {
+                          setIsSeeking(true);
+                          setSeekValue(val);
+                        }}
+                        onValueCommit={([val]) => {
+                          setIsSeeking(false);
+                          setSeekValue(val);
+                          setDisplayProgress(val);
+                          actions.seek(val);
+                        }}
                         className="mt-2 w-full"
                       />
                     </>
@@ -403,9 +556,17 @@ export function PlayerShell() {
                   <LibraryView
                     queue={queue}
                     currentTrackId={currentTrackId}
+                    authenticated={Boolean(user)}
+                    playlists={playlists}
                     onPlayTrack={(id) => void actions.playById(id)}
                     onToggleFavorite={async (track) => {
                       if (!track) return;
+
+                      if (!user) {
+                        setAuthModalOpen(true);
+                        return;
+                      }
+
                       const favorite = isFavorite(track.id);
                       if (favorite) {
                         await removeFavorite(track.id);
@@ -418,11 +579,26 @@ export function PlayerShell() {
                         });
                       }
                     }}
+                    onAddTrackToPlaylist={async (playlistId, track) => {
+                      if (!user) {
+                        setAuthModalOpen(true);
+                        return;
+                      }
+
+                      await addTrackToPlaylist(playlistId, {
+                        track_id: track.id,
+                        title: track.title,
+                        artist: track.artist,
+                        thumbnail_url: track.thumbnailUrl,
+                        duration_seconds: track.durationInSeconds,
+                      });
+                    }}
                   />
                 )}
                 {activeView === "favorites" && (
                   <FavoritesView
                     favorites={favorites}
+                    authenticated={Boolean(user)}
                     onPlayFavorite={(fav) => {
                       const trackInQueue = queue.find((t) => t.id === fav.track_id);
                       if (trackInQueue) {
@@ -435,6 +611,11 @@ export function PlayerShell() {
                       void actions.playById(mapped.id);
                     }}
                     onRemoveFavorite={async (fav) => {
+                      if (!user) {
+                        setAuthModalOpen(true);
+                        return;
+                      }
+
                       await removeFavorite(fav.track_id);
                     }}
                   />
@@ -442,15 +623,37 @@ export function PlayerShell() {
                 {activeView === "playlists" && (
                   <PlaylistsView
                     playlists={playlists}
+                    authenticated={Boolean(user)}
                     selectedPlaylistId={selectedPlaylistId}
                     playlistTracks={playlistTracks}
                     loadingTracks={loadingPlaylistTracks}
-                    onSelectPlaylist={handleSelectPlaylist}
-                    onCreatePlaylist={handleCreatePlaylist}
+                    onSelectPlaylist={(id) => {
+                      if (!user) {
+                        setAuthModalOpen(true);
+                        return;
+                      }
+
+                      return handleSelectPlaylist(id);
+                    }}
+                    onCreatePlaylist={handleRequestCreatePlaylist}
                     onPlayTrack={handlePlayPlaylistTrack}
                     onPlayAll={handlePlayEntirePlaylist}
-                    onRemoveTrack={handleRemoveTrackFromPlaylist}
-                    onDeletePlaylist={handleDeletePlaylist}
+                    onRemoveTrack={(track) => {
+                      if (!user) {
+                        setAuthModalOpen(true);
+                        return;
+                      }
+
+                      return handleRemoveTrackFromPlaylist(track);
+                    }}
+                    onDeletePlaylist={(playlistId) => {
+                      if (!user) {
+                        setAuthModalOpen(true);
+                        return;
+                      }
+
+                      return handleRequestDeletePlaylist(playlistId);
+                    }}
                     onAddCurrentTrack={handleAddCurrentTrackToPlaylist}
                     canAddCurrentTrack={Boolean(currentTrack && selectedPlaylistId)}
                   />
@@ -544,18 +747,34 @@ export function PlayerShell() {
                 </p>
               </div>
               {currentTrack && (
-                <button
-                  type="button"
-                  className={`ml-1 flex h-8 w-8 items-center justify-center rounded-full border text-[var(--muted)] ${
-                    isCurrentTrackFavorite ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)]"
-                  }`}
-                  onClick={handleAddToFavorites}
-                >
-                  <Heart
-                    size={16}
-                    fill={isCurrentTrackFavorite ? "currentColor" : "none"}
-                  />
-                </button>
+                user ? (
+                  <button
+                    type="button"
+                    className={`ml-1 flex h-8 w-8 items-center justify-center rounded-full border text-[var(--muted)] ${
+                      isCurrentTrackFavorite
+                        ? "border-[var(--accent)] text-[var(--accent)]"
+                        : "border-[var(--line)]"
+                    }`}
+                    onClick={handleAddToFavorites}
+                  >
+                    <Heart size={16} fill={isCurrentTrackFavorite ? "currentColor" : "none"} />
+                  </button>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <button
+                          type="button"
+                          disabled
+                          className="ml-1 flex h-8 w-8 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] opacity-40 cursor-not-allowed"
+                        >
+                          <Heart size={16} />
+                        </button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>Inicia sesión para guardar</TooltipContent>
+                  </Tooltip>
+                )
               )}
             </div>
 
@@ -583,10 +802,22 @@ export function PlayerShell() {
                   variant="ghost"
                   size="icon"
                   disabled={state.loading || queue.length < 2}
-                  onClick={() => actions.shuffle()}
-                  className={queue.length >= 2 ? "text-[var(--accent)]" : "text-[var(--muted)]"}
+                  onClick={handleShuffleClick}
+                  className={queue.length >= 2 ? "text-[var(--foreground)]" : "text-[var(--muted)]"}
                 >
                   <Shuffle size={18} />
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={state.loading}
+                  onClick={() => actions.cycleRepeatMode()}
+                  className={
+                    state.repeatMode === "off" ? "text-[var(--muted)]" : "text-[var(--accent)]"
+                  }
+                >
+                  {state.repeatMode === "one" ? <Repeat1 size={18} /> : <Repeat size={18} />}
                 </Button>
                 <Button
                   variant="ghost"
@@ -604,23 +835,126 @@ export function PlayerShell() {
             <div className="hidden flex-[2] items-center justify-end gap-3 sm:flex">
               <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
                 <Volume2 size={16} />
-                <span className="w-7 text-right">{state.volume}</span>
+                <span className="w-7 text-right">{volume}</span>
               </div>
               <Slider
-                value={[state.volume]}
+                value={[volume]}
                 max={100}
                 step={1}
-                onValueChange={([val]) => actions.setVolume(val)}
+                onValueChange={([val]) => {
+                  setVolume(val);
+                  actions.setVolume(val);
+                }}
                 className="w-24"
               />
               <div className="hidden flex-col items-end text-xs text-[var(--muted)] md:flex">
-                <span>{formatDuration(state.progressSeconds)}</span>
+                <span>
+                  {formatDuration(isSeeking && seekValue !== null ? seekValue : displayProgress)}
+                </span>
                 <span>{formatDuration(state.durationSeconds)}</span>
               </div>
             </div>
           </footer>
         </section>
       </main>
+
+      <AuthModalControlled open={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+
+      {/* Modal: crear playlist (reemplaza prompt) */}
+      <Dialog.Root
+        open={createPlaylistOpen}
+        onOpenChange={(open) => {
+          setCreatePlaylistOpen(open);
+          if (!open) {
+            setCreatePlaylistName("");
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
+          <Dialog.Content
+            className="fixed top-1/2 left-1/2 w-[22rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6 shadow-xl"
+          >
+            <Dialog.Title className="text-sm font-semibold text-[var(--foreground)]">Nueva playlist</Dialog.Title>
+            <Dialog.Description className="sr-only">Crea una nueva playlist</Dialog.Description>
+            <input
+              value={createPlaylistName}
+              onChange={(e) => setCreatePlaylistName(e.target.value)}
+              maxLength={50}
+              placeholder="Nombre de la playlist"
+              className="mt-3 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void handleConfirmCreatePlaylist();
+                }
+              }}
+              autoFocus
+              disabled={createPlaylistLoading}
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  className="h-8 rounded-full border border-[var(--line)] bg-transparent px-3 text-xs text-[var(--foreground)] hover:bg-[var(--surface-elevated)] disabled:opacity-50"
+                  disabled={createPlaylistLoading}
+                >
+                  Cancelar
+                </button>
+              </Dialog.Close>
+              <button
+                type="button"
+                className="h-8 rounded-full bg-[var(--accent)] px-3 text-xs font-semibold text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+                onClick={() => void handleConfirmCreatePlaylist()}
+                disabled={createPlaylistLoading || !createPlaylistName.trim()}
+              >
+                {createPlaylistLoading ? "Creando…" : "Crear"}
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* Modal: confirmar delete (reemplaza confirm) */}
+      <Dialog.Root
+        open={deletePlaylistOpen}
+        onOpenChange={(open) => {
+          setDeletePlaylistOpen(open);
+          if (!open) setDeletePlaylistId(null);
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
+          <Dialog.Content
+            className="fixed top-1/2 left-1/2 w-[22rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6 shadow-xl"
+          >
+            <Dialog.Title className="text-sm font-semibold text-[var(--foreground)]">Eliminar playlist</Dialog.Title>
+            <Dialog.Description className="sr-only">Confirma la eliminacion de una playlist</Dialog.Description>
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              Esta acción no se puede deshacer. ¿Seguro que quieres eliminarla?
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  className="h-8 rounded-full border border-[var(--line)] bg-transparent px-3 text-xs text-[var(--foreground)] hover:bg-[var(--surface-elevated)] disabled:opacity-50"
+                  disabled={deletePlaylistLoading}
+                >
+                  Cancelar
+                </button>
+              </Dialog.Close>
+              <button
+                type="button"
+                className="h-8 rounded-full border border-red-500/40 bg-red-500/15 px-3 text-xs font-semibold text-red-100 hover:bg-red-500/25 disabled:opacity-50"
+                onClick={() => void handleConfirmDeletePlaylist()}
+                disabled={deletePlaylistLoading}
+              >
+                {deletePlaylistLoading ? "Eliminando…" : "Eliminar"}
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </TooltipProvider>
   );
 }

@@ -6,8 +6,9 @@ import { usePlayer } from "@/providers/PlayerProvider";
 import { usePlaylists } from "@/hooks/usePlaylists";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { YouTubeSearchResult } from "@/lib/player/types";
-import { AuthGate } from "./AuthGate";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/providers/AuthProvider";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type Props = {
   results: YouTubeSearchResult[];
@@ -15,6 +16,7 @@ type Props = {
 
 export function SearchResultList({ results }: Props) {
   const { actions } = usePlayer();
+  const { user } = useAuth();
   const { playlists, addTrackToPlaylist } = usePlaylists();
   const { addFavorite } = useFavorites();
 
@@ -36,13 +38,15 @@ export function SearchResultList({ results }: Props) {
               className="h-12 w-12 flex-shrink-0 rounded-lg object-cover"
             />
             <div className="min-w-0">
-              <p className="truncate text-[13px] font-semibold text-white/90">{item.title}</p>
-              <p className="truncate text-[11px] text-white/60">
+              <p className="truncate text-[13px] font-semibold text-[var(--foreground)]">{item.title}</p>
+              <p className="truncate text-[11px] text-[var(--muted)]">
                 {item.artistOrChannel}
                 {item.durationSeconds
-                  ? ` • ${Math.floor(item.durationSeconds / 60)}:${(item.durationSeconds % 60)
-                      .toString()
-                      .padStart(2, "0")}`
+                  ? (() => {
+                      const s = Math.floor(item.durationSeconds);
+                      const m = Math.floor(s / 60);
+                      return ` • ${m}:${String(s % 60).padStart(2, "0")}`;
+                    })()
                   : null}
               </p>
             </div>
@@ -62,50 +66,85 @@ export function SearchResultList({ results }: Props) {
                 };
                 actions.addTrack(track);
               }}
-            >
-              <PlusCircle size={14} />
-            </Button>
-
-            {/* Acciones de persistencia protegidas por AuthGate */}
-            <AuthGate ctaLabel="Iniciar sesión para guardar" onRequireAuth={() => {}}>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 w-7 rounded-full px-0"
-                onClick={async () => {
-                  if (!playlists.length) return;
-                  const target = playlists[0]!;
-                  await addTrackToPlaylist(target.id, {
-                    track_id: `yt-${item.youtubeId}`,
-                    title: item.title,
-                    artist: item.artistOrChannel,
-                    thumbnail_url: item.thumbnailUrl,
-                    duration_seconds: item.durationSeconds,
-                  });
-                }}
               >
-                <ListPlus size={14} />
+                <PlusCircle size={14} />
               </Button>
 
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 w-7 rounded-full px-0"
-                onClick={async () => {
-                  await addFavorite({
-                    track_id: `yt-${item.youtubeId}`,
-                    title: item.title,
-                    artist: item.artistOrChannel,
-                    thumbnail_url: item.thumbnailUrl,
-                  });
-                }}
-              >
-                <Heart size={14} />
-              </Button>
-            </AuthGate>
+              {/* Persistencia: requiere sesion */}
+              {user ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 w-7 rounded-full px-0"
+                    onClick={async () => {
+                      if (!playlists.length) return;
+                      const target = playlists[0]!;
+                      await addTrackToPlaylist(target.id, {
+                        track_id: `yt-${item.youtubeId}`,
+                        title: item.title,
+                        artist: item.artistOrChannel,
+                        thumbnail_url: item.thumbnailUrl,
+                        duration_seconds: item.durationSeconds,
+                      });
+                    }}
+                  >
+                    <ListPlus size={14} />
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 w-7 rounded-full px-0"
+                    onClick={async () => {
+                      await addFavorite({
+                        track_id: `yt-${item.youtubeId}`,
+                        title: item.title,
+                        artist: item.artistOrChannel,
+                        thumbnail_url: item.thumbnailUrl,
+                      });
+                    }}
+                  >
+                    <Heart size={14} />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled
+                          className="h-7 w-7 rounded-full px-0 opacity-40 cursor-not-allowed"
+                        >
+                          <ListPlus size={14} />
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>Inicia sesión para guardar</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled
+                          className="h-7 w-7 rounded-full px-0 opacity-40 cursor-not-allowed"
+                        >
+                          <Heart size={14} />
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>Inicia sesión para guardar</TooltipContent>
+                  </Tooltip>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
     </div>
   );
 }

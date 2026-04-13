@@ -36,6 +36,7 @@ export interface PlaybackState {
   isPlaying: boolean;
   loading: boolean;
   volume: number;
+  repeatMode: RepeatMode;
   currentTrack: ITrack | null;
   queue: ITrack[];
   progressSeconds: number;
@@ -43,6 +44,8 @@ export interface PlaybackState {
   error: string | null;
   canPlay: boolean;
 }
+
+export type RepeatMode = "off" | "all" | "one";
 
 export interface YouTubeSearchResult {
   youtubeId: string;

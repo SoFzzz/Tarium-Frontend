@@ -6,11 +6,20 @@ import type { Favorite } from "@/hooks/useFavorites";
 
 type Props = {
   favorites: Favorite[];
+  authenticated?: boolean;
   onPlayFavorite: (fav: Favorite) => void;
   onRemoveFavorite: (fav: Favorite) => void | Promise<void>;
 };
 
-export function FavoritesView({ favorites, onPlayFavorite, onRemoveFavorite }: Props) {
+export function FavoritesView({ favorites, authenticated, onPlayFavorite, onRemoveFavorite }: Props) {
+  if (!authenticated) {
+    return (
+      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 text-sm text-[var(--muted)]">
+        <p className="text-center">Inicia sesión para guardar tus playlists y favoritos</p>
+      </div>
+    );
+  }
+
   if (!favorites.length) {
     return (
       <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 text-sm text-[var(--muted)]">
