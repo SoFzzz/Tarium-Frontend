@@ -47,6 +47,16 @@ export interface PlaybackState {
 
 export type RepeatMode = "off" | "all" | "one";
 
+export interface DeezerSearchResult {
+  id: string;
+  title: string;
+  artist: string;
+  album?: string;
+  thumbnailUrl: string;
+  previewUrl: string;
+  durationSeconds?: number;
+}
+
 export interface YouTubeSearchResult {
   youtubeId: string;
   title: string;

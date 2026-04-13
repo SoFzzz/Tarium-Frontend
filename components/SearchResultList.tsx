@@ -5,13 +5,13 @@ import { Heart, ListPlus, PlusCircle } from "lucide-react";
 import { usePlayer } from "@/providers/PlayerProvider";
 import { usePlaylists } from "@/hooks/usePlaylists";
 import { useFavorites } from "@/hooks/useFavorites";
-import type { YouTubeSearchResult } from "@/lib/player/types";
+import type { DeezerSearchResult } from "@/lib/player/types";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/providers/AuthProvider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type Props = {
-  results: YouTubeSearchResult[];
+  results: DeezerSearchResult[];
 };
 
 export function SearchResultList({ results }: Props) {
@@ -28,7 +28,7 @@ export function SearchResultList({ results }: Props) {
     <div className="space-y-2">
       {results.map((item) => (
         <div
-          key={item.youtubeId}
+          key={item.id}
           className="flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-elevated)] px-3 py-2 text-xs"
         >
           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -40,7 +40,7 @@ export function SearchResultList({ results }: Props) {
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold text-[var(--foreground)]">{item.title}</p>
               <p className="truncate text-[11px] text-[var(--muted)]">
-                {item.artistOrChannel}
+                {item.artist}
                 {item.durationSeconds
                   ? (() => {
                       const s = Math.floor(item.durationSeconds);
@@ -59,10 +59,13 @@ export function SearchResultList({ results }: Props) {
               className="h-7 w-7 rounded-full px-0"
               onClick={() => {
                 const track = {
-                  id: `yt-${item.youtubeId}`,
+                  id: `dz-${item.id}`,
                   title: item.title,
-                  artist: item.artistOrChannel,
+                  artist: item.artist,
                   thumbnailUrl: item.thumbnailUrl,
+                  durationInSeconds: item.durationSeconds,
+                  objectUrl: item.previewUrl,
+                  sourceType: "remote" as const,
                 };
                 actions.addTrack(track);
               }}
@@ -81,9 +84,9 @@ export function SearchResultList({ results }: Props) {
                       if (!playlists.length) return;
                       const target = playlists[0]!;
                       await addTrackToPlaylist(target.id, {
-                        track_id: `yt-${item.youtubeId}`,
+                        track_id: `dz-${item.id}`,
                         title: item.title,
-                        artist: item.artistOrChannel,
+                        artist: item.artist,
                         thumbnail_url: item.thumbnailUrl,
                         duration_seconds: item.durationSeconds,
                       });
@@ -98,9 +101,9 @@ export function SearchResultList({ results }: Props) {
                     className="h-7 w-7 rounded-full px-0"
                     onClick={async () => {
                       await addFavorite({
-                        track_id: `yt-${item.youtubeId}`,
+                        track_id: `dz-${item.id}`,
                         title: item.title,
-                        artist: item.artistOrChannel,
+                        artist: item.artist,
                         thumbnail_url: item.thumbnailUrl,
                       });
                     }}

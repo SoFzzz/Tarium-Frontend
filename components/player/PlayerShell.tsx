@@ -14,7 +14,6 @@ import {
   LogOut,
   User,
    Home,
-   Library,
    Star,
   Search,
   Sun,
@@ -46,7 +45,7 @@ import { usePlayer } from "@/providers/PlayerProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { usePlaylists, type Playlist, type PlaylistTrack } from "@/hooks/usePlaylists";
 import { useFavorites, type Favorite } from "@/hooks/useFavorites";
-// import { SearchPanel } from "@/components/SearchPanel";
+import { SearchPanel } from "@/components/SearchPanel";
 import { LocalLibraryDropzone } from "@/components/LocalLibraryDropzone";
 import { LibraryView } from "./LibraryView";
 import { FavoritesView } from "./FavoritesView";
@@ -367,12 +366,6 @@ export function PlayerShell() {
                 onClick={() => setActiveView("home")}
               />
               <SidebarIcon
-                icon={Library}
-                label="Biblioteca"
-                active={activeView === "home"}
-                onClick={() => setActiveView("home")}
-              />
-              <SidebarIcon
                 icon={Star}
                 label="Favoritos"
                 active={activeView === "favorites"}
@@ -432,9 +425,8 @@ export function PlayerShell() {
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="hidden items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--muted)] sm:flex">
-                <Search size={14} />
-                <span>Busca en YouTube o carga archivos</span>
+              <div className="hidden w-full max-w-xl sm:block">
+                <SearchPanel />
               </div>
               <ThemeToggleButton />
               {user ? (
