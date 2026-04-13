@@ -36,7 +36,7 @@ export function SearchPanel() {
     <section className="space-y-3">
       <form onSubmit={handleSearch} className="flex items-center gap-2">
         <Input
-          size="sm"
+          size={32}
           radius="full"
           variant="bordered"
           placeholder="Buscar en YouTube (no se reproduce, solo metadatos)"
