@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, Manrope } from "next/font/google";
 import "./globals.css";
-import { AuthProvider } from "@/providers/AuthProvider";
+import { AppProviders } from "@/components/providers";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -28,11 +28,10 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${manrope.variable} ${cormorant.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

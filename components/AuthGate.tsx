@@ -1,9 +1,9 @@
 "use client";
 
 import { ReactNode } from "react";
-import { Button, Card } from "@heroui/react";
 
 import { useAuth } from "@/providers/AuthProvider";
+import { Button } from "@/components/ui/button";
 
 type AuthGateProps = {
   children: ReactNode;
@@ -24,7 +24,7 @@ export function AuthGate({ children, ctaLabel, onRequireAuth }: AuthGateProps) {
   }
 
   return (
-    <Card className="border border-white/10 bg-black/70 p-4 text-sm text-[var(--foreground)]">
+    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 text-sm text-[var(--foreground)]">
       <p className="mb-2 text-xs text-[var(--muted)]">
         Estás usando Tarium como invitado. Puedes seguir reproduciendo tu música
         local sin problema; si quieres sincronizar playlists, favoritos e historial
@@ -32,14 +32,14 @@ export function AuthGate({ children, ctaLabel, onRequireAuth }: AuthGateProps) {
       </p>
       <Button
         size="sm"
-        className="mt-1 rounded-full bg-[var(--accent)] text-xs font-semibold text-black"
-        onPress={() => {
+        className="mt-1 text-xs font-semibold"
+        onClick={() => {
           onRequireAuth?.();
           // Delega en flujo existente de Auth (p.ej. modal externo).
         }}
       >
         {ctaLabel ?? "Iniciar sesión para sincronizar"}
       </Button>
-    </Card>
+    </div>
   );
 }

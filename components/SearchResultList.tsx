@@ -1,6 +1,5 @@
 "use client";
 
-import { Button, Card } from "@heroui/react";
 import { Heart, ListPlus, PlusCircle } from "lucide-react";
 
 import { usePlayer } from "@/providers/PlayerProvider";
@@ -8,6 +7,7 @@ import { usePlaylists } from "@/hooks/usePlaylists";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { YouTubeSearchResult } from "@/lib/player/types";
 import { AuthGate } from "./AuthGate";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   results: YouTubeSearchResult[];
@@ -25,9 +25,9 @@ export function SearchResultList({ results }: Props) {
   return (
     <div className="space-y-2">
       {results.map((item) => (
-        <Card
+        <div
           key={item.youtubeId}
-          className="flex items-center justify-between gap-3 border border-white/8 bg-black/40 px-3 py-2 text-xs"
+          className="flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-elevated)] px-3 py-2 text-xs"
         >
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <img
@@ -49,12 +49,11 @@ export function SearchResultList({ results }: Props) {
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-1">
-            {/* Agregar a cola como track local virtual (solo metadatos) */}
             <Button
-              isIconOnly
               size="sm"
-              className="h-7 w-7 border border-white/10 bg-white/5 text-white/80"
-              onPress={() => {
+              variant="outline"
+              className="h-7 w-7 rounded-full px-0"
+              onClick={() => {
                 const track = {
                   id: `yt-${item.youtubeId}`,
                   title: item.title,
@@ -70,10 +69,10 @@ export function SearchResultList({ results }: Props) {
             {/* Acciones de persistencia protegidas por AuthGate */}
             <AuthGate ctaLabel="Iniciar sesión para guardar" onRequireAuth={() => {}}>
               <Button
-                isIconOnly
                 size="sm"
-                className="h-7 w-7 border border-white/10 bg-white/5 text-white/80"
-                onPress={async () => {
+                variant="outline"
+                className="h-7 w-7 rounded-full px-0"
+                onClick={async () => {
                   if (!playlists.length) return;
                   const target = playlists[0]!;
                   await addTrackToPlaylist(target.id, {
@@ -89,10 +88,10 @@ export function SearchResultList({ results }: Props) {
               </Button>
 
               <Button
-                isIconOnly
                 size="sm"
-                className="h-7 w-7 border border-white/10 bg-white/5 text-white/80"
-                onPress={async () => {
+                variant="outline"
+                className="h-7 w-7 rounded-full px-0"
+                onClick={async () => {
                   await addFavorite({
                     track_id: `yt-${item.youtubeId}`,
                     title: item.title,
@@ -105,7 +104,7 @@ export function SearchResultList({ results }: Props) {
               </Button>
             </AuthGate>
           </div>
-        </Card>
+        </div>
       ))}
     </div>
   );

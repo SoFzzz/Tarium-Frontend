@@ -25,8 +25,11 @@ export interface ITrack {
   thumbnailUrl: string;
   durationInSeconds?: number;
   album?: string;
+  // Para fuentes locales podemos conservar el nombre de archivo para hints de formato.
+  fileName?: string;
   // Fuente local real del audio.
   objectUrl?: string;
+  sourceType?: "local" | "remote";
 }
 
 export interface PlaybackState {
@@ -35,6 +38,10 @@ export interface PlaybackState {
   volume: number;
   currentTrack: ITrack | null;
   queue: ITrack[];
+  progressSeconds: number;
+  durationSeconds: number;
+  error: string | null;
+  canPlay: boolean;
 }
 
 export interface YouTubeSearchResult {
@@ -50,4 +57,21 @@ export interface EnrichedMetadata {
   artist: string;
   thumbnailUrl: string;
   source: "youtube-search" | "native";
+}
+
+/**
+ * Conversión explícita de LocalTrack (biblioteca local) al tipo ITrack usado por el reproductor.
+ */
+export function mapLocalTrackToITrack(local: LocalTrack): ITrack {
+  return {
+    id: local.id,
+    title: local.title,
+    artist: local.artist,
+    album: local.album,
+    durationInSeconds: local.durationSeconds,
+    thumbnailUrl: local.artworkUrl ?? "/images/track-placeholder.png",
+    fileName: local.fileName,
+    objectUrl: local.objectUrl,
+    sourceType: "local",
+  };
 }

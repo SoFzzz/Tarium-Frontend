@@ -5,32 +5,31 @@ import { useDropzone } from "react-dropzone";
 
 import { parseFileToLocalTrack } from "@/lib/local-library/LocalTrackParserService";
 import type { LocalTrack } from "@/lib/player/types";
+import { useLocalLibrary } from "@/lib/local-library/LocalLibraryStore";
 
 type Props = {
   onTracksParsed: (tracks: LocalTrack[]) => void;
 };
 
 const ACCEPTED_MIME_TYPES = [
-  "audio/mpeg", // mp3
-  "audio/mp3", // algunos navegadores
+  "audio/mpeg",
   "audio/flac",
-  "audio/x-flac",
   "audio/wav",
-  "audio/x-wav",
-  "audio/wave",
-  "audio/x-pn-wav",
-  "audio/mp4", // m4a
-  "audio/aac",
+  "audio/x-m4a",
   "audio/ogg",
-  "audio/vorbis",
 ];
 
 const ACCEPT_PROP = {
-  "audio/*": ACCEPTED_MIME_TYPES,
+  "audio/mpeg": [".mp3"],
+  "audio/flac": [".flac"],
+  "audio/wav": [".wav"],
+  "audio/x-m4a": [".m4a"],
+  "audio/ogg": [".ogg"],
 };
 
 export function LocalLibraryDropzone({ onTracksParsed }: Props) {
   const [isParsing, setIsParsing] = useState(false);
+  const { addTracks } = useLocalLibrary();
 
   const handleFiles = useCallback(
     async (files: File[]) => {
@@ -53,13 +52,14 @@ export function LocalLibraryDropzone({ onTracksParsed }: Props) {
         }
 
         if (parsed.length > 0) {
+          addTracks(parsed);
           onTracksParsed(parsed);
         }
       } finally {
         setIsParsing(false);
       }
     },
-    [onTracksParsed],
+    [addTracks, onTracksParsed],
   );
 
   const onDrop = useCallback(

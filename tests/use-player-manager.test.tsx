@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { usePlayerManager } from "@/hooks/usePlayerManager";
-import { BrowserMockMediaAdapter } from "@/lib/player/media-adapter";
+import type { MediaAdapter } from "@/lib/player/media-adapter";
 import { mockTracks } from "@/lib/player/mock-tracks";
 import { PlayerManager } from "@/lib/player/player-manager";
 
@@ -25,9 +25,16 @@ function HookHarness({ manager }: { manager: PlayerManager }) {
   );
 }
 
+class TestMediaAdapter implements MediaAdapter {
+  public play = async () => {};
+  public pause = async () => {};
+  public setVolume = (_v: number) => {};
+  public seekTo = (_s: number) => {};
+}
+
 describe("usePlayerManager", () => {
   it("syncs state updates from the manager into React", async () => {
-    const manager = new PlayerManager(mockTracks, new BrowserMockMediaAdapter());
+    const manager = new PlayerManager(mockTracks, new TestMediaAdapter());
 
     render(<HookHarness manager={manager} />);
 

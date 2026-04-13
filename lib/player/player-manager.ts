@@ -15,6 +15,8 @@ export class PlayerManager {
   private subscribers = new Set<Subscriber>();
   private snapshot: PlaybackState;
   private historyListeners = new Set<HistoryListener>();
+  private progressSeconds = 0;
+  private durationSeconds = 0;
 
   constructor(initialTracks: ITrack[] = [], mediaAdapter: MediaAdapter | null = null) {
     this.playlist = new DoublyLinkedList<ITrack>((track) => track.id);
@@ -23,6 +25,20 @@ export class PlayerManager {
 
     if (initialTracks.length > 0) {
       this.loadQueue(initialTracks);
+    }
+
+    if (this.mediaAdapter?.onEnded) {
+      this.mediaAdapter.onEnded(() => {
+        void this.playNext();
+      });
+    }
+
+    if (this.mediaAdapter?.onTimeUpdate) {
+      this.mediaAdapter.onTimeUpdate((position, duration) => {
+        this.progressSeconds = Math.max(0, Math.floor(position));
+        this.durationSeconds = Math.max(0, Math.floor(duration));
+        this.notify();
+      });
     }
   }
 
@@ -35,7 +51,14 @@ export class PlayerManager {
 
     this.isPlaying = false;
     this.loading = false;
+    this.progressSeconds = 0;
+    this.durationSeconds = 0;
     this.notify();
+  }
+
+  /** Reemplaza por completo la cola actual con la nueva lista. */
+  public setQueue(tracks: ITrack[]): void {
+    this.loadQueue(tracks);
   }
 
   public addTrack(track: ITrack): void {
@@ -110,6 +133,13 @@ export class PlayerManager {
     this.isPlaying = false;
     this.loading = false;
     this.notify();
+  }
+
+   /** Permite hacer seek en segundos sobre la pista actual. */
+  public seek(seconds: number): void {
+    if (!this.mediaAdapter?.seekTo) return;
+    const clamped = Math.max(0, seconds);
+    this.mediaAdapter.seekTo(clamped);
   }
 
   public async togglePlayPause(): Promise<void> {
@@ -233,6 +263,10 @@ export class PlayerManager {
       volume: this.volume,
       currentTrack: this.playlist.getCurrent(),
       queue: this.playlist.toArray(),
+      progressSeconds: this.progressSeconds,
+      durationSeconds: this.durationSeconds,
+      error: null,
+      canPlay: true,
     };
   }
 }

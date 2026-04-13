@@ -1,0 +1,82 @@
+En Tarium-Frontend hay varios cambios de navegación y funcionalidad 
+que implementar. Lee todo antes de tocar código.
+
+## 1. Sidebar izquierdo — limpiar y conectar
+
+Quita estos íconos del sidebar:
+- Estadísticas (BarChart o similar)
+- Descargas (Download o similar)
+
+Deja solo estos 4 íconos en orden:
+- Inicio (Home) → muestra la vista principal con el reproductor
+- Biblioteca (Library) → muestra la biblioteca local cargada
+- Favoritos (Star) → muestra lista de canciones favoritas
+- Playlists (ListMusic) → muestra panel de playlists
+
+Cada ícono debe navegar/mostrar su vista correspondiente.
+Usa estado local en el layout para controlar qué vista 
+está activa — no necesitas React Router, solo un 
+useState<"home" | "library" | "favorites" | "playlists">
+
+## 2. Toggle de tema — mover a header
+
+El toggle de tema oscuro/claro debe salir del ícono de 
+settings del sidebar y moverse a un botón en el header 
+(arriba a la derecha, junto al buscador).
+
+Usa un ícono Sun/Moon que cambie según el tema activo.
+
+El ícono de settings (rueda) en el sidebar puede 
+eliminarse completamente por ahora.
+
+## 3. Vista Favoritos
+
+Cuando el usuario clickea el ícono de estrella en el sidebar:
+- Mostrar lista de canciones marcadas como favoritas
+- Cada canción muestra: artwork, título, artista, duración
+- Click en canción → la reproduce
+- Botón para quitar de favoritos en cada fila
+
+## 4. Vista Playlists
+
+Cuando el usuario clickea el ícono de playlists:
+- Mostrar lista de playlists creadas
+- Botón "Nueva playlist" que pide nombre y la crea
+- Click en playlist → muestra sus tracks
+- Dentro de una playlist: reproducir toda, agregar tracks, 
+  quitar tracks, eliminar playlist
+
+## 5. Botón de favoritos en barra inferior
+
+En la barra reproductora inferior, entre los controles 
+y el volumen, agrega un botón de corazón (Heart):
+- Relleno si el track actual es favorito
+- Vacío si no lo es
+- Click → toggle favorito del track actual
+- Usa useFavorites() que ya existe
+
+## 6. Botón de shuffle en barra inferior
+
+En la barra reproductora inferior, junto a los controles 
+de anterior/siguiente, agrega el botón de shuffle:
+- Ícono Shuffle
+- Click → toggle shuffle en PlayerManager
+- Estado visual activo cuando shuffle está on 
+  (color acento vs color muted)
+
+## 7. Vista Biblioteca
+
+Cuando el usuario clickea el ícono de biblioteca:
+- Mostrar todos los tracks cargados localmente
+- Grid o lista con artwork, título, artista, duración
+- Click en track → lo reproduce
+- Botón de corazón en cada track para marcar favorito
+
+## Reglas
+- Mantén toda la lógica de PlayerManager intacta
+- Los hooks useFavorites() y usePlaylists() ya existen, úsalos
+- No rompas la barra reproductora inferior
+- Haz npm run build al terminar y confirma que pasa limpio
+- No hagas push hasta que el build sea limpio
+
+Confirma qué archivos creaste o modificaste.

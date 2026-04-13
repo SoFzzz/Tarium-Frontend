@@ -3,9 +3,8 @@
 import { createContext, useContext, useState } from "react";
 
 import { usePlayerManager } from "@/hooks/usePlayerManager";
-import { BrowserMockMediaAdapter } from "@/lib/player/media-adapter";
-import { mockTracks } from "@/lib/player/mock-tracks";
 import { PlayerManager } from "@/lib/player/player-manager";
+import { HowlerAudioAdapter } from "@/lib/player/howler-audio-adapter";
 
 type PlayerContextValue = ReturnType<typeof usePlayerManager>;
 
@@ -13,7 +12,7 @@ const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [manager] = useState(
-    () => new PlayerManager(mockTracks, new BrowserMockMediaAdapter()),
+    () => new PlayerManager([], new HowlerAudioAdapter()),
   );
   const value = usePlayerManager(manager);
 

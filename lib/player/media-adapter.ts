@@ -5,26 +5,10 @@ export interface MediaAdapter {
   pause(): Promise<void> | void;
   setVolume(volume: number): void;
   seekTo?(seconds: number): void;
-}
 
-export class BrowserMockMediaAdapter implements MediaAdapter {
-  private volume = 100;
+  /** Notifica cuando la pista actual termina de reproducirse. */
+  onEnded?(handler: () => void): void;
 
-  public async play(): Promise<void> {
-    await new Promise((resolve) => {
-      window.setTimeout(resolve, 240);
-    });
-  }
-
-  public async pause(): Promise<void> {
-    await Promise.resolve();
-  }
-
-  public setVolume(volume: number): void {
-    this.volume = volume;
-  }
-
-  public getVolume(): number {
-    return this.volume;
-  }
+  /** Notifica actualizaciones de tiempo de reproducción y duración en segundos. */
+  onTimeUpdate?(handler: (positionSeconds: number, durationSeconds: number) => void): void;
 }

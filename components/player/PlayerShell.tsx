@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip, Slider, Spinner, Table, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "@heroui/react";
+import { useEffect, useState } from "react";
 import {
   Clock3,
   ListMusic,
@@ -8,19 +8,34 @@ import {
   Play,
   SkipBack,
   SkipForward,
-  Sparkles,
   Volume2,
   Heart,
   LogOut,
   User,
+   Home,
+   Library,
+   Star,
+  Search,
+  Sun,
+  Moon,
+  Shuffle,
 } from "lucide-react";
 
 import { usePlayer } from "@/providers/PlayerProvider";
 import { useAuth } from "@/providers/AuthProvider";
-import { usePlaylists } from "@/hooks/usePlaylists";
-import { useFavorites } from "@/hooks/useFavorites";
+import { usePlaylists, type Playlist, type PlaylistTrack } from "@/hooks/usePlaylists";
+import { useFavorites, type Favorite } from "@/hooks/useFavorites";
 import { SearchPanel } from "@/components/SearchPanel";
-import { useState } from "react";
+import { LocalLibraryDropzone } from "@/components/LocalLibraryDropzone";
+import { LibraryView } from "./LibraryView";
+import { FavoritesView } from "./FavoritesView";
+import { PlaylistsView } from "./PlaylistsView";
+import { mapLocalTrackToITrack, type LocalTrack, type ITrack } from "@/lib/player/types";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useTheme } from "next-themes";
 
 const formatDuration = (seconds?: number) => {
   if (seconds === undefined) {
@@ -36,16 +51,33 @@ const formatDuration = (seconds?: number) => {
 export function PlayerShell() {
   const { state, actions } = usePlayer();
   const { user, signOut } = useAuth();
-  const { playlists, createPlaylist } = usePlaylists();
+  const { playlists, createPlaylist, getPlaylistTracks, addTrackToPlaylist, removeTrackFromPlaylist, deletePlaylist } = usePlaylists();
   const { favorites, addFavorite, removeFavorite, isFavorite } = useFavorites();
   
-  const [newPlaylistName, setNewPlaylistName] = useState("");
-  const [showNewPlaylistInput, setShowNewPlaylistInput] = useState(false);
+  const [activeView, setActiveView] = useState<"home" | "library" | "favorites" | "playlists">("home");
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [playlistTracks, setPlaylistTracks] = useState<PlaylistTrack[] | null>(null);
+  const [loadingPlaylistTracks, setLoadingPlaylistTracks] = useState(false);
+  const [isShuffleEnabled, setIsShuffleEnabled] = useState(false);
   
   const currentTrack = state.currentTrack;
   const queue = state.queue;
   const currentTrackId = currentTrack?.id ?? null;
   const isCurrentTrackFavorite = currentTrack ? isFavorite(currentTrack.id) : false;
+
+  const handleLocalDropzoneTracksParsed = (localTracks: LocalTrack[]) => {
+    const mapped = localTracks.map(mapLocalTrackToITrack);
+
+    if (state.queue.length === 0) {
+      actions.loadQueue(mapped);
+      void actions.play();
+      return;
+    }
+
+    for (const track of mapped) {
+      actions.addTrack(track);
+    }
+  };
 
   const handleAddToFavorites = async () => {
     if (!currentTrack) return;
@@ -66,387 +98,589 @@ export function PlayerShell() {
   };
 
   const handleCreatePlaylist = async () => {
-    if (!newPlaylistName.trim()) return;
+    const name = window.prompt("Nombre de la nueva playlist");
+    if (!name || !name.trim()) return;
     try {
-      await createPlaylist(newPlaylistName);
-      setNewPlaylistName("");
-      setShowNewPlaylistInput(false);
+      await createPlaylist(name.trim());
     } catch (err) {
       console.error("Error creating playlist:", err);
     }
   };
 
-  if (currentTrack === null) {
-    return (
-      <main className="relative flex min-h-screen items-center justify-center px-6 py-10">
-        <section className="fade-rise w-full max-w-3xl rounded-[2rem] border border-white/10 bg-[var(--surface)] p-10 text-center shadow-[var(--shadow)] backdrop-blur-2xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.34em] text-[var(--muted)]">
-            Tarium
-          </p>
-          <h1 className="mt-4 font-[family-name:var(--font-cormorant)] text-5xl leading-none text-[var(--foreground)]">
-            The queue is quiet.
-          </h1>
-          <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-[var(--muted)]">
-            Seed a playlist and the full player workspace will appear here with transport
-            controls, artwork, and queue navigation.
-          </p>
-        </section>
-      </main>
-    );
-  }
+  const handleSelectPlaylist = async (id: string) => {
+    setSelectedPlaylistId(id);
+    setLoadingPlaylistTracks(true);
+    try {
+      const tracks = await getPlaylistTracks(id);
+      setPlaylistTracks(tracks);
+    } catch (err) {
+      console.error("Error loading playlist tracks:", err);
+      setPlaylistTracks([]);
+    } finally {
+      setLoadingPlaylistTracks(false);
+    }
+  };
+
+  const mapPlaylistTrackToITrack = (track: PlaylistTrack): ITrack => ({
+    id: track.track_id,
+    title: track.title,
+    artist: track.artist,
+    thumbnailUrl: track.thumbnail_url,
+    durationInSeconds: track.duration_seconds,
+  });
+
+  const mapFavoriteToITrack = (fav: Favorite): ITrack => ({
+    id: fav.track_id,
+    title: fav.title,
+    artist: fav.artist,
+    thumbnailUrl: fav.thumbnail_url,
+  });
+
+  const handlePlayPlaylistTrack = async (playlistTrack: PlaylistTrack) => {
+    if (!playlistTracks || playlistTracks.length === 0) return;
+    const tracks = playlistTracks.map(mapPlaylistTrackToITrack);
+    actions.setQueue(tracks);
+    await actions.playById(playlistTrack.track_id);
+  };
+
+  const handlePlayEntirePlaylist = async () => {
+    if (!playlistTracks || playlistTracks.length === 0) return;
+    const tracks = playlistTracks.map(mapPlaylistTrackToITrack);
+    actions.setQueue(tracks);
+    await actions.play();
+  };
+
+  const handleAddCurrentTrackToPlaylist = async () => {
+    if (!selectedPlaylistId || !currentTrack) return;
+    try {
+      await addTrackToPlaylist(selectedPlaylistId, {
+        track_id: currentTrack.id,
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        thumbnail_url: currentTrack.thumbnailUrl,
+        duration_seconds: currentTrack.durationInSeconds,
+      });
+      const updated = await getPlaylistTracks(selectedPlaylistId);
+      setPlaylistTracks(updated);
+    } catch (err) {
+      console.error("Error adding track to playlist:", err);
+    }
+  };
+
+  const handleRemoveTrackFromPlaylist = async (track: PlaylistTrack) => {
+    if (!selectedPlaylistId) return;
+    try {
+      await removeTrackFromPlaylist(selectedPlaylistId, track.track_id);
+      setPlaylistTracks((prev) =>
+        prev ? prev.filter((t) => t.track_id !== track.track_id) : prev,
+      );
+    } catch (err) {
+      console.error("Error removing track from playlist:", err);
+    }
+  };
+
+  const handleDeletePlaylist = async (playlistId: string) => {
+    if (!window.confirm("¿Eliminar esta playlist?")) return;
+    try {
+      await deletePlaylist(playlistId);
+      if (selectedPlaylistId === playlistId) {
+        setSelectedPlaylistId(null);
+        setPlaylistTracks(null);
+      }
+    } catch (err) {
+      console.error("Error deleting playlist:", err);
+    }
+  };
+
+  const handleToggleShuffle = () => {
+    if (!isShuffleEnabled) {
+      if (queue.length >= 2) {
+        actions.shuffle();
+      }
+      setIsShuffleEnabled(true);
+    } else {
+      setIsShuffleEnabled(false);
+    }
+  };
 
   return (
-    <main className="player-shell relative min-h-screen overflow-hidden px-4 py-4 sm:px-6 sm:py-6">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <img
-          alt=""
-          src={currentTrack.thumbnailUrl}
-          className="h-full w-full scale-110 object-cover opacity-[0.18] blur-3xl"
-        />
-        <div className="absolute inset-0 bg-[linear-gradient(110deg,rgba(16,12,14,0.92)_0%,rgba(16,12,14,0.58)_45%,rgba(16,12,14,0.96)_100%)]" />
-      </div>
+    <TooltipProvider>
+      <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+        {/* Sidebar fija */}
+        <aside className="fixed left-0 top-0 flex h-full w-16 flex-col items-center justify-between border-r border-[var(--line)] bg-[var(--surface)] py-6">
+          <div className="flex flex-col items-center gap-4">
+            <div className="mb-4 h-9 w-9 rounded-full bg-[var(--accent)] text-xs font-bold text-[var(--background)] flex items-center justify-center">
+              T
+            </div>
+            <nav className="flex flex-col items-center gap-3 text-[var(--muted)]">
+              <SidebarIcon
+                icon={Home}
+                label="Inicio"
+                active={activeView === "home"}
+                onClick={() => setActiveView("home")}
+              />
+              <SidebarIcon
+                icon={Library}
+                label="Biblioteca"
+                active={activeView === "library"}
+                onClick={() => setActiveView("library")}
+              />
+              <SidebarIcon
+                icon={Star}
+                label="Favoritos"
+                active={activeView === "favorites"}
+                onClick={() => setActiveView("favorites")}
+              />
+              <SidebarIcon
+                icon={ListMusic}
+                label="Playlists"
+                active={activeView === "playlists"}
+                onClick={() => setActiveView("playlists")}
+              />
+            </nav>
+          </div>
 
-      <section className="relative mx-auto flex min-h-[calc(100svh-2rem)] w-full max-w-[1500px] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[var(--surface)] shadow-[var(--shadow)] backdrop-blur-2xl lg:grid lg:grid-cols-[1.3fr_0.9fr]">
-        <div className="relative flex flex-col justify-between border-b border-white/8 px-6 py-6 sm:px-8 sm:py-8 lg:border-b-0 lg:border-r">
-          <header className="fade-rise flex items-center justify-between gap-4">
+          <div className="flex flex-col items-center gap-4">
+            {user && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] bg-[var(--surface-elevated)] text-xs"
+                    onClick={signOut}
+                  >
+                    <LogOut size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Cerrar sesión</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        </aside>
+
+        {/* Contenido principal */}
+        <section className="ml-16 flex min-h-screen flex-col bg-[var(--background)] pb-16">
+          {/* Header */}
+          <header className="flex items-center justify-between border-b border-[var(--line)] bg-[var(--surface)] px-6 py-4">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.36em] text-[var(--muted)]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-[var(--muted)]">
                 Tarium
               </p>
-              <h1 className="mt-3 max-w-md font-[family-name:var(--font-cormorant)] text-4xl leading-[0.9] text-[var(--foreground)] sm:text-6xl">
-                Your listening room, staged like a headline.
+              <h1 className="mt-1 font-[family-name:var(--font-cormorant)] text-2xl sm:text-3xl">
+                Tu reproductor de música local
               </h1>
             </div>
 
-            <div className="flex items-center gap-3">
-              <Chip className="border-white/10 bg-white/8 text-[var(--foreground)]" variant="soft">
-                {state.loading ? "Preparing playback" : "Queue live"}
-              </Chip>
-
-              {user && (
-                <Dropdown>
-                  <DropdownTrigger>
-                    <Button
-                      isIconOnly
-                      variant="ghost"
-                      className="text-[var(--foreground)]"
-                    >
-                      <User size={18} />
-                    </Button>
-                  </DropdownTrigger>
-                  <DropdownMenu
-                    aria-label="User menu"
-                    className="bg-[var(--surface)] border border-white/10"
-                  >
-                    <DropdownItem key="user" className="text-xs cursor-default">
-                      {user.email}
-                    </DropdownItem>
-                    <DropdownItem key="signout" onClick={signOut}>
-                      <div className="flex items-center gap-2">
-                        <LogOut size={14} />
-                        Cerrar sesión
-                      </div>
-                    </DropdownItem>
-                  </DropdownMenu>
-                </Dropdown>
-              )}
+            <div className="flex items-center gap-4">
+              <div className="hidden items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--muted)] sm:flex">
+                <Search size={14} />
+                <span>Busca en YouTube o carga archivos</span>
+              </div>
+              <ThemeToggleButton />
+              {user ? (
+                <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                  <User size={16} />
+                  <span className="max-w-[10rem] truncate">{user.email}</span>
+                </div>
+              ) : null}
             </div>
           </header>
 
-          <div className="mt-8 grid flex-1 items-center gap-8 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-            <div className="fade-rise relative mx-auto flex w-full max-w-[440px] items-center justify-center xl:mx-0">
-              <div className="artwork-glow" />
-              <div className="relative aspect-square w-full overflow-hidden rounded-[2rem] border border-white/12 bg-[var(--surface-strong)] shadow-2xl">
-                <img
-                  key={currentTrack.id}
-                  src={currentTrack.thumbnailUrl}
-                  alt={`${currentTrack.title} cover artwork`}
-                  className="h-full w-full object-cover transition-transform duration-700 ease-out hover:scale-[1.03]"
-                />
-              </div>
-            </div>
-
-            <div className="fade-rise">
-              <div className="flex items-center gap-3 text-xs uppercase tracking-[0.28em] text-[var(--muted)]">
-                <Sparkles size={14} />
-                <span>Now playing</span>
-              </div>
-
-              <div className="mt-5">
-                <p className="text-sm font-medium uppercase tracking-[0.18em] text-[var(--accent)]">
-                  {currentTrack.artist}
-                </p>
-                <h2 className="mt-3 max-w-xl font-[family-name:var(--font-cormorant)] text-5xl leading-[0.92] text-[var(--foreground)] sm:text-7xl">
-                  {currentTrack.title}
-                </h2>
-                <p className="mt-5 max-w-lg text-sm leading-7 text-[var(--muted)] sm:text-base">
-                  A focused playback workspace with the queue, transport, and volume all in
-                  view. Designed to feel closer to a listening suite than a dashboard.
-                </p>
-              </div>
-
-              <div className="mt-8 flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]">
-                <Chip className="border-white/10 bg-white/8 text-[var(--foreground)]" variant="soft">
-                  <Clock3 className="mr-2" size={14} />
-                  {formatDuration(currentTrack.durationInSeconds)}
-                </Chip>
-                <Chip className="border-white/10 bg-white/8 text-[var(--foreground)]" variant="soft">
-                  <ListMusic className="mr-2" size={14} />
-                  {queue.length} tracks loaded
-                </Chip>
-                {currentTrack.album ? (
-                  <Chip
-                    className="border-white/10 bg-white/8 text-[var(--foreground)]"
-                    variant="tertiary"
-                  >
-                    {currentTrack.album}
-                  </Chip>
-                ) : null}
-              </div>
-
-              {user && (
-                <div className="mt-4 flex items-center gap-2">
-                  <Button
-                    isIconOnly
-                    variant="ghost"
-                    className={`rounded-full ${
-                      isCurrentTrackFavorite
-                        ? "text-[var(--accent)]"
-                        : "text-[var(--muted)] hover:text-[var(--foreground)]"
-                    }`}
-                    onPress={handleAddToFavorites}
-                  >
-                    <Heart
-                      size={18}
-                      fill={isCurrentTrackFavorite ? "currentColor" : "none"}
-                    />
-                  </Button>
-
-                  <Dropdown>
-                    <DropdownTrigger>
-                      <Button
-                        size="sm"
-                        variant="tertiary"
-                        className="rounded-full border border-white/10 bg-white/8 text-[var(--foreground)]"
-                      >
-                        Add to playlist
-                      </Button>
-                    </DropdownTrigger>
-                    <DropdownMenu
-                      aria-label="Playlists"
-                      className="bg-[var(--surface)] border border-white/10"
-                    >
-                      {playlists.length === 0 ? (
-                        <DropdownItem key="empty" className="text-xs cursor-default">
-                          No playlists
-                        </DropdownItem>
-                      ) : (
-                        playlists.map((playlist) => (
-                          <DropdownItem
-                            key={playlist.id}
-                            textValue={playlist.name}
-                            className="text-sm"
-                          >
-                            {playlist.name}
-                          </DropdownItem>
-                        ))
+          {/* Área principal */}
+          <div className="flex flex-1 flex-col gap-4 bg-[var(--background)] px-4 pt-4 pb-24 sm:px-6">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+              {/* Grid principal: artwork + biblioteca local / vistas dinámicas */}
+              <div className="flex flex-col gap-4">
+                {/* Vista principal / biblioteca según activeView */}
+                <div className="flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      {activeView === "home" && (
+                        <>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
+                            Reproduciendo ahora
+                          </p>
+                          <h2 className="mt-1 truncate font-[family-name:var(--font-cormorant)] text-2xl sm:text-3xl">
+                            {currentTrack ? currentTrack.title : "Ningún track seleccionado"}
+                          </h2>
+                          <p className="truncate text-xs text-[var(--muted)]">
+                            {currentTrack ? currentTrack.artist : "Carga archivos o añade pistas a la cola"}
+                          </p>
+                        </>
                       )}
-                    </DropdownMenu>
-                  </Dropdown>
-                </div>
-              )}
-
-              <div className="mt-10 flex flex-col gap-7">
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button
-                    isIconOnly
-                    variant="tertiary"
-                    className="rounded-full border border-white/10 bg-white/8 text-[var(--foreground)]"
-                    onPress={() => {
-                      void actions.playPrevious();
-                    }}
-                    isDisabled={state.loading}
-                  >
-                    <SkipBack size={18} />
-                  </Button>
-
-                  <Button
-                    size="lg"
-                    className="min-w-40 rounded-full bg-[var(--accent)] px-8 font-semibold text-[#24160f] shadow-[0_14px_32px_rgba(255,142,69,0.28)] transition-transform duration-200 hover:scale-[1.02]"
-                    onPress={() => {
-                      void actions.togglePlayPause();
-                    }}
-                    isDisabled={state.loading}
-                  >
-                    {state.loading ? (
-                      <>
-                        <Spinner color="current" size="sm" />
-                        Loading
-                      </>
-                    ) : state.isPlaying ? (
-                      <>
-                        <Pause size={18} />
-                        Pause
-                      </>
-                    ) : (
-                      <>
-                        <Play size={18} />
-                        Play
-                      </>
-                    )}
-                  </Button>
-
-                  <Button
-                    isIconOnly
-                    variant="tertiary"
-                    className="rounded-full border border-white/10 bg-white/8 text-[var(--foreground)]"
-                    onPress={() => {
-                      void actions.playNext();
-                    }}
-                    isDisabled={state.loading}
-                  >
-                    <SkipForward size={18} />
-                  </Button>
-
-                  <Button
-                    variant="tertiary"
-                    className="rounded-full border border-white/10 bg-transparent px-5 text-[var(--foreground)]"
-                    onPress={() => actions.shuffle()}
-                    isDisabled={state.loading || queue.length < 2}
-                  >
-                    Shuffle queue
-                  </Button>
-                </div>
-
-                <div className="max-w-md rounded-[1.5rem] border border-white/8 bg-black/10 px-5 py-4">
-                  <div className="mb-3 flex items-center justify-between text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
-                    <div className="flex items-center gap-2">
-                      <Volume2 size={14} />
-                      <span>Volume</span>
+                      {activeView === "library" && (
+                        <>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
+                            Biblioteca local
+                          </p>
+                          <h2 className="mt-1 font-[family-name:var(--font-cormorant)] text-2xl sm:text-3xl">
+                            Todos tus archivos cargados
+                          </h2>
+                          <p className="truncate text-xs text-[var(--muted)]">
+                            Haz clic en cualquier track para reproducirlo o márcalo como favorito.
+                          </p>
+                        </>
+                      )}
+                      {activeView === "favorites" && (
+                        <>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
+                            Favoritos
+                          </p>
+                          <h2 className="mt-1 font-[family-name:var(--font-cormorant)] text-2xl sm:text-3xl">
+                            Tus canciones guardadas
+                          </h2>
+                          <p className="truncate text-xs text-[var(--muted)]">
+                            Gestiona y reproduce tus favoritos desde aquí.
+                          </p>
+                        </>
+                      )}
+                      {activeView === "playlists" && (
+                        <>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
+                            Playlists
+                          </p>
+                          <h2 className="mt-1 font-[family-name:var(--font-cormorant)] text-2xl sm:text-3xl">
+                            Organiza tus sesiones
+                          </h2>
+                          <p className="truncate text-xs text-[var(--muted)]">
+                            Crea playlists, añade o quita canciones y lánzalas a la reproducción.
+                          </p>
+                        </>
+                      )}
                     </div>
-                    <span>{state.volume}%</span>
+                    {currentTrack && activeView === "home" && (
+                      <div className="hidden h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl border border-[var(--line)] sm:block">
+                        <img
+                          src={currentTrack.thumbnailUrl}
+                          alt={currentTrack.title}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    )}
                   </div>
-                  <Slider
-                    aria-label="Playback volume"
-                    value={state.volume}
-                    minValue={0}
-                    maxValue={100}
-                    step={1}
-                    className="text-[var(--accent)]"
-                    onChange={(value) => {
-                      actions.setVolume(Array.isArray(value) ? value[0] ?? 0 : value);
+
+                  {activeView === "home" && (
+                    <>
+                      <div className="mt-2 flex items-center justify-between text-xs text-[var(--muted)]">
+                        <div className="flex items-center gap-2">
+                          <Clock3 size={14} />
+                          <span>
+                            {formatDuration(state.progressSeconds)} / {formatDuration(state.durationSeconds)}
+                          </span>
+                        </div>
+                        <div className="hidden items-center gap-2 sm:flex">
+                          <ListMusic size={14} />
+                          <span>{queue.length} en cola</span>
+                        </div>
+                      </div>
+
+                      <Slider
+                        value={state.durationSeconds > 0 ? [state.progressSeconds] : [0]}
+                        max={state.durationSeconds || 0}
+                        step={1}
+                        disabled={state.durationSeconds <= 0}
+                        onValueChange={([val]) => actions.seek(val)}
+                        className="mt-2 w-full"
+                      />
+                    </>
+                  )}
+                </div>
+                {activeView === "home" && (
+                  <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
+                          Biblioteca local
+                        </p>
+                        <p className="text-xs text-[var(--muted)]">Arrastra archivos o usa el botón para cargarlos</p>
+                      </div>
+                    </div>
+
+                    <LocalLibraryDropzone onTracksParsed={handleLocalDropzoneTracksParsed} />
+                  </div>
+                )}
+                {activeView === "library" && (
+                  <LibraryView
+                    queue={queue}
+                    currentTrackId={currentTrackId}
+                    onPlayTrack={(id) => void actions.playById(id)}
+                    onToggleFavorite={async (track) => {
+                      if (!track) return;
+                      const favorite = isFavorite(track.id);
+                      if (favorite) {
+                        await removeFavorite(track.id);
+                      } else {
+                        await addFavorite({
+                          track_id: track.id,
+                          title: track.title,
+                          artist: track.artist,
+                          thumbnail_url: track.thumbnailUrl,
+                        });
+                      }
                     }}
                   />
+                )}
+                {activeView === "favorites" && (
+                  <FavoritesView
+                    favorites={favorites}
+                    onPlayFavorite={(fav) => {
+                      const trackInQueue = queue.find((t) => t.id === fav.track_id);
+                      if (trackInQueue) {
+                        void actions.playById(trackInQueue.id);
+                        return;
+                      }
+
+                      const mapped = mapFavoriteToITrack(fav);
+                      actions.addTrack(mapped);
+                      void actions.playById(mapped.id);
+                    }}
+                    onRemoveFavorite={async (fav) => {
+                      await removeFavorite(fav.track_id);
+                    }}
+                  />
+                )}
+                {activeView === "playlists" && (
+                  <PlaylistsView
+                    playlists={playlists}
+                    selectedPlaylistId={selectedPlaylistId}
+                    playlistTracks={playlistTracks}
+                    loadingTracks={loadingPlaylistTracks}
+                    onSelectPlaylist={handleSelectPlaylist}
+                    onCreatePlaylist={handleCreatePlaylist}
+                    onPlayTrack={handlePlayPlaylistTrack}
+                    onPlayAll={handlePlayEntirePlaylist}
+                    onRemoveTrack={handleRemoveTrackFromPlaylist}
+                    onDeletePlaylist={handleDeletePlaylist}
+                    onAddCurrentTrack={handleAddCurrentTrackToPlaylist}
+                    canAddCurrentTrack={Boolean(currentTrack && selectedPlaylistId)}
+                  />
+                )}
+              </div>
+
+              {/* Cola + búsqueda YouTube */}
+              <div className="flex flex-col gap-4">
+                <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-[var(--line)] bg-[var(--surface)]">
+                  <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
+                        Cola
+                      </p>
+                      <p className="text-xs text-[var(--muted)]">Toca un track para reproducirlo</p>
+                    </div>
+                  </div>
+
+                  <ScrollArea className="max-h-64 px-2 py-2">
+                    {queue.length === 0 ? (
+                      <p className="px-3 py-4 text-xs text-[var(--muted)]">
+                        No hay nada en la cola todavía.
+                      </p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {queue.map((track) => {
+                          const isCurrent = track.id === currentTrackId;
+                          return (
+                            <li key={track.id}>
+                              <button
+                                type="button"
+                                className={`flex w-full items-center gap-3 rounded-xl border px-2 py-2 text-left text-xs transition-colors ${
+                                  isCurrent
+                                    ? "border-[var(--accent)]/60 bg-[var(--accent)]/10"
+                                    : "border-transparent hover:border-[var(--line)] hover:bg-[var(--surface-elevated)]"
+                                }`}
+                                onClick={() => void actions.playById(track.id)}
+                              >
+                                <img
+                                  src={track.thumbnailUrl}
+                                  alt={track.title}
+                                  className="h-10 w-10 flex-shrink-0 rounded-lg object-cover"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-[13px] font-semibold">{track.title}</p>
+                                  <p className="truncate text-[11px] text-[var(--muted)]">
+                                    {track.artist}
+                                  </p>
+                                </div>
+                                <span className="ml-2 text-[11px] text-[var(--muted)]">
+                                  {formatDuration(track.durationInSeconds)}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </ScrollArea>
+                </div>
+
+                <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
+                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
+                    Búsqueda en YouTube
+                  </p>
+                  <SearchPanel />
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <aside className="fade-rise flex min-h-0 flex-col gap-4 px-4 py-4 sm:px-5 sm:py-5">
-          <div className="rounded-[1.6rem] border border-white/8 bg-[rgba(12,10,12,0.22)] p-4 backdrop-blur-xl">
-            <div className="mb-4 flex items-end justify-between gap-4">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-[var(--muted)]">
-                  Queue
-                </p>
-                <h3 className="mt-2 font-[family-name:var(--font-cormorant)] text-3xl text-[var(--foreground)]">
-                  Upcoming focus
-                </h3>
+          {/* Barra de reproducción inferior fija */}
+          <footer className="fixed bottom-0 left-16 right-0 flex h-16 items-center gap-4 border-t border-[var(--line)] bg-[var(--surface)] px-4 sm:px-6">
+            {/* Artwork + info */}
+            <div className="flex min-w-0 flex-[2] items-center gap-3">
+              <div className="h-10 w-10 overflow-hidden rounded-md border border-[var(--line)] bg-[var(--surface-elevated)]">
+                {currentTrack ? (
+                  <img
+                    src={currentTrack.thumbnailUrl}
+                    alt={currentTrack.title}
+                    className="h-full w-full object-cover"
+                  />
+                ) : null}
               </div>
-              <p className="max-w-[12rem] text-right text-xs leading-6 text-[var(--muted)]">
-                Select any row to move it into the spotlight.
-              </p>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {currentTrack ? currentTrack.title : "Nada reproduciéndose"}
+                </p>
+                <p className="truncate text-xs text-[var(--muted)]">
+                  {currentTrack ? currentTrack.artist : "Selecciona un track para empezar"}
+                </p>
+              </div>
+              {currentTrack && (
+                <button
+                  type="button"
+                  className={`ml-1 flex h-8 w-8 items-center justify-center rounded-full border text-[var(--muted)] ${
+                    isCurrentTrackFavorite ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)]"
+                  }`}
+                  onClick={handleAddToFavorites}
+                >
+                  <Heart
+                    size={16}
+                    fill={isCurrentTrackFavorite ? "currentColor" : "none"}
+                  />
+                </button>
+              )}
             </div>
 
-            <Table className="min-h-[26rem]">
-              <Table.Content
-                aria-label="Playback queue"
-                selectionMode="single"
-                selectedKeys={currentTrackId === null ? new Set([]) : new Set([currentTrackId])}
-              >
-                <Table.Header>
-                  <Table.Column isRowHeader className="text-[10px] uppercase tracking-[0.24em] text-[var(--muted)]">
-                    Track
-                  </Table.Column>
-                  <Table.Column className="text-[10px] uppercase tracking-[0.24em] text-[var(--muted)]">
-                    Status
-                  </Table.Column>
-                  <Table.Column className="text-right text-[10px] uppercase tracking-[0.24em] text-[var(--muted)]">
-                    Length
-                  </Table.Column>
-                </Table.Header>
+            {/* Controles principales */}
+            <div className="flex flex-[3] flex-col items-center gap-1">
+              <div className="flex items-center justify-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={state.loading}
+                  onClick={() => void actions.playPrevious()}
+                  className="text-[var(--foreground)]"
+                >
+                  <SkipBack size={18} />
+                </Button>
+                <Button
+                  size="lg"
+                  className="h-10 min-w-24 rounded-full px-5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] active:bg-[var(--accent-active)] text-white hover:text-white"
+                  disabled={state.loading || !currentTrack}
+                  onClick={() => void actions.togglePlayPause()}
+                >
+                  {state.loading ? "Cargando" : state.isPlaying ? <Pause size={18} /> : <Play size={18} />}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={state.loading || queue.length < 2}
+                  onClick={() => actions.shuffle()}
+                  className={queue.length >= 2 ? "text-[var(--accent)]" : "text-[var(--muted)]"}
+                >
+                  <Shuffle size={18} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={state.loading}
+                  onClick={() => void actions.playNext()}
+                  className="text-[var(--foreground)]"
+                >
+                  <SkipForward size={18} />
+                </Button>
+              </div>
+            </div>
 
-                <Table.Body>
-                  {queue.map((track) => {
-                    const isCurrent = track.id === currentTrackId;
+            {/* Volumen */}
+            <div className="hidden flex-[2] items-center justify-end gap-3 sm:flex">
+              <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                <Volume2 size={16} />
+                <span className="w-7 text-right">{state.volume}</span>
+              </div>
+              <Slider
+                value={[state.volume]}
+                max={100}
+                step={1}
+                onValueChange={([val]) => actions.setVolume(val)}
+                className="w-24"
+              />
+              <div className="hidden flex-col items-end text-xs text-[var(--muted)] md:flex">
+                <span>{formatDuration(state.progressSeconds)}</span>
+                <span>{formatDuration(state.durationSeconds)}</span>
+              </div>
+            </div>
+          </footer>
+        </section>
+      </main>
+    </TooltipProvider>
+  );
+}
 
-                    return (
-                      <Table.Row
-                        id={track.id}
-                        key={track.id}
-                        className="queue-row border-b border-white/6"
-                      >
-                        <Table.Cell className="py-3">
-                          <button
-                            type="button"
-                            className="flex w-full items-center gap-3 text-left"
-                            onClick={() => {
-                              void actions.playById(track.id);
-                            }}
-                          >
-                            <img
-                              src={track.thumbnailUrl}
-                              alt={`${track.title} thumbnail`}
-                              className="h-14 w-14 rounded-2xl object-cover"
-                            />
-                            <div className="min-w-0">
-                              <p
-                                className={`truncate text-sm font-semibold ${
-                                  isCurrent ? "text-[var(--foreground)]" : "text-white/82"
-                                }`}
-                              >
-                                {track.title}
-                              </p>
-                              <p className="truncate text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-                                {track.artist}
-                              </p>
-                            </div>
-                          </button>
-                        </Table.Cell>
-                        <Table.Cell>
-                          {isCurrent ? (
-                            <Chip
-                              className="border border-[var(--accent)]/30 bg-[var(--accent)]/12 text-[var(--accent)]"
-                              variant="soft"
-                            >
-                              {state.loading ? "Loading" : state.isPlaying ? "Live" : "Paused"}
-                            </Chip>
-                          ) : (
-                            <span className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                              queued
-                            </span>
-                          )}
-                        </Table.Cell>
-                        <Table.Cell className="text-right text-sm text-[var(--muted)]">
-                          {formatDuration(track.durationInSeconds)}
-                        </Table.Cell>
-                      </Table.Row>
-                    );
-                  })}
-                </Table.Body>
-              </Table.Content>
-            </Table>
-          </div>
+type SidebarIconProps = {
+  icon: React.ComponentType<{ size?: number }>;
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+};
 
-          <div className="rounded-[1.6rem] border border-white/8 bg-[rgba(12,10,12,0.22)] p-4 backdrop-blur-xl">
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.34em] text-[var(--muted)]">
-              YouTube search
-            </p>
-            <SearchPanel />
-          </div>
-        </aside>
-      </section>
-    </main>
+function SidebarIcon({ icon: Icon, label, active, onClick }: SidebarIconProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
+            active
+              ? "bg-[var(--accent)] text-white"
+              : "text-[var(--muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)]"
+          }`}
+          onClick={onClick}
+        >
+          <Icon size={18} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ThemeToggleButton() {
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDark = theme === "dark";
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] bg-[var(--surface-elevated)] text-[var(--muted)]"
+          onClick={() => setTheme(isDark ? "light" : "dark")}
+        >
+          {mounted ? (
+            isDark ? <Sun size={16} /> : <Moon size={16} />
+          ) : (
+            <div className="h-4 w-4" />
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right">
+        {mounted ? (isDark ? "Tema claro" : "Tema oscuro") : "Tema"}
+      </TooltipContent>
+    </Tooltip>
   );
 }

@@ -5,7 +5,8 @@ import { parseBlob } from "music-metadata-browser";
 import type { LocalTrack, MetadataStatus } from "@/lib/player/types";
 
 // Placeholder visual para cuando no hay carátula ni enriquecimiento todavía.
-const FALLBACK_ARTWORK_URL = "/images/track-placeholder.png";
+// Usamos /placeholder.png en public/ como recurso genérico.
+const FALLBACK_ARTWORK_URL = "/placeholder.png";
 
 // Genera un id estable a partir de nombre + tamaño + duracion en segundos.
 function stableTrackId(fileName: string, size: number, durationSeconds: number): string {

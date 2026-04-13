@@ -3,7 +3,7 @@
 import { useAuth } from '@/providers/AuthProvider';
 import { usePlaylists } from '@/hooks/usePlaylists';
 import { useFavorites } from '@/hooks/useFavorites';
-import { Button } from '@heroui/react';
+import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 
 export function AuthSection() {
@@ -33,10 +33,7 @@ export function AuthSection() {
           onChange={(e) => setPassword(e.target.value)}
           className="block w-full p-2 mb-4 border rounded"
         />
-        <Button
-          onClick={() => signIn(email, password)}
-          className="w-full"
-        >
+        <Button onClick={() => signIn(email, password)} className="w-full">
           Iniciar Sesión
         </Button>
       </div>
@@ -84,9 +81,7 @@ export function PlaylistsSection() {
           onChange={(e) => setNewPlaylistName(e.target.value)}
           className="flex-1 p-2 border rounded"
         />
-        <Button
-          onClick={handleCreatePlaylist}
-        >
+        <Button onClick={handleCreatePlaylist}>
           Crear
         </Button>
       </div>

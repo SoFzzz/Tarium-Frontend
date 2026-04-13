@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Input, Button, Spinner } from "@heroui/react";
 
 import { searchYouTube } from "@/lib/youtube";
 import type { YouTubeSearchResult } from "@/lib/player/types";
 import { SearchResultList } from "./SearchResultList";
+import { Button } from "@/components/ui/button";
 
 export function SearchPanel() {
   const [query, setQuery] = useState("");
@@ -35,18 +35,18 @@ export function SearchPanel() {
   return (
     <section className="space-y-3">
       <form onSubmit={handleSearch} className="flex items-center gap-2">
-        <Input
+        <input
           placeholder="Buscar en YouTube (no se reproduce, solo metadatos)"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="flex-1"
+          className="flex-1 rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus-visible:border-[var(--accent)]"
         />
         <Button
           type="submit"
           size="sm"
-          isDisabled={!query.trim() || loading}
+          disabled={!query.trim() || loading}
         >
-          {loading ? <Spinner size="sm" /> : "Buscar"}
+          {loading ? "Buscando..." : "Buscar"}
         </Button>
       </form>
 
