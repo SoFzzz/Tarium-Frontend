@@ -32,7 +32,8 @@ export function AlbumsView({ spotifyConnected }: { spotifyConnected?: boolean })
       const res = await fetch(`/api/spotify/albums/${album.id}/tracks`);
       const tracks: ITrack[] = await res.json();
       if (tracks.length > 0) {
-        actions.setQueue(tracks);
+        actions.loadQueue(tracks);
+        await actions.playById(tracks[0]!.id);
       }
     } catch (err) {
       console.error("Error loading album tracks", err);
