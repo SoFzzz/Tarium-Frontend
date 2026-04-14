@@ -23,6 +23,10 @@ import {
   Repeat1,
   GripVertical,
   Trash2,
+,
+  Music2,
+  Disc3,
+  Radio
 } from "lucide-react";
 import {
   DndContext,
@@ -93,7 +97,7 @@ export function PlayerShell() {
   const [deletePlaylistId, setDeletePlaylistId] = useState<string | null>(null);
   const [deletePlaylistLoading, setDeletePlaylistLoading] = useState(false);
   
-  const [activeView, setActiveView] = useState<"home" | "library" | "favorites" | "playlists">("home");
+  const [activeView, setActiveView] = useState<"home" | "library" | "favorites" | "playlists" | "artists" | "albums" | "genres" | "nowplaying">("home");
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [playlistTracks, setPlaylistTracks] = useState<PlaylistTrack[] | null>(null);
   const [loadingPlaylistTracks, setLoadingPlaylistTracks] = useState(false);
@@ -363,24 +367,27 @@ export function PlayerShell() {
               T
             </div>
             <nav className="flex flex-col items-center gap-3 text-[var(--muted)]">
-              <SidebarIcon
-                icon={Home}
-                label="Inicio"
-                active={activeView === "home"}
-                onClick={() => setActiveView("home")}
-              />
-              <SidebarIcon
-                icon={Star}
-                label="Favoritos"
-                active={activeView === "favorites"}
-                onClick={() => setActiveView("favorites")}
-              />
-              <SidebarIcon
-                icon={ListMusic}
-                label="Playlists"
-                active={activeView === "playlists"}
-                onClick={() => setActiveView("playlists")}
-              />
+              {/* Descubrimiento */}
+              <SidebarIcon icon={Home} label="Inicio" active={activeView === "home"} onClick={() => setActiveView("home")} />
+              <SidebarIcon icon={Search} label="Buscar" active={activeView === "search"} onClick={() => setActiveView("home")} />
+              
+              <hr className="my-1 w-8 border-[var(--line)] opacity-50" />
+
+              {/* Formatos */}
+              <SidebarIcon icon={Music2} label="Artistas" active={activeView === "artists"} onClick={() => setActiveView("artists")} />
+              <SidebarIcon icon={Disc3} label="Álbumes" active={activeView === "albums"} onClick={() => setActiveView("albums")} />
+              <SidebarIcon icon={Radio} label="Géneros" active={activeView === "genres"} onClick={() => setActiveView("genres")} />
+              
+              <hr className="my-1 w-8 border-[var(--line)] opacity-50" />
+
+              {/* Personal */}
+              <SidebarIcon icon={Star} label="Favoritos" active={activeView === "favorites"} onClick={() => setActiveView("favorites")} />
+              <SidebarIcon icon={ListMusic} label="Playlists" active={activeView === "playlists"} onClick={() => setActiveView("playlists")} />
+              
+              <hr className="my-1 w-8 border-[var(--line)] opacity-50" />
+              
+              {/* Reproductor */}
+              <SidebarIcon icon={Play} label="Reproductor" active={activeView === "nowplaying"} onClick={() => setActiveView("nowplaying")} />
             </nav>
           </div>
 
@@ -758,27 +765,17 @@ export function PlayerShell() {
 
           {/* Barra de reproducción inferior fija */}
           <nav
-            className="fixed left-0 right-0 z-40 flex items-center justify-around border-t border-[var(--line)] bg-[var(--surface)] px-2 py-2 sm:hidden"
+            className="fixed left-0 right-0 z-40 flex items-center gap-6 overflow-x-auto border-t border-[var(--line)] bg-[var(--surface)] px-6 py-2 sm:hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
             style={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom, 0px))" }}
           >
-            <MobileNavIcon
-              icon={Home}
-              label="Inicio"
-              active={activeView === "home"}
-              onClick={() => setActiveView("home")}
-            />
-            <MobileNavIcon
-              icon={Star}
-              label="Favoritos"
-              active={activeView === "favorites"}
-              onClick={() => setActiveView("favorites")}
-            />
-            <MobileNavIcon
-              icon={ListMusic}
-              label="Playlists"
-              active={activeView === "playlists"}
-              onClick={() => setActiveView("playlists")}
-            />
+            <MobileNavIcon icon={Home} label="Inicio" active={activeView === "home"} onClick={() => setActiveView("home")} />
+            <MobileNavIcon icon={Search} label="Buscar" active={activeView === "search"} onClick={() => setActiveView("home")} />
+            <MobileNavIcon icon={Music2} label="Artistas" active={activeView === "artists"} onClick={() => setActiveView("artists")} />
+            <MobileNavIcon icon={Disc3} label="Álbumes" active={activeView === "albums"} onClick={() => setActiveView("albums")} />
+            <MobileNavIcon icon={Radio} label="Géneros" active={activeView === "genres"} onClick={() => setActiveView("genres")} />
+            <MobileNavIcon icon={Star} label="Favs" active={activeView === "favorites"} onClick={() => setActiveView("favorites")} />
+            <MobileNavIcon icon={ListMusic} label="Listas" active={activeView === "playlists"} onClick={() => setActiveView("playlists")} />
+            <MobileNavIcon icon={Play} label="Actual" active={activeView === "nowplaying"} onClick={() => setActiveView("nowplaying")} />
           </nav>
           <footer
             className="fixed bottom-0 left-0 right-0 flex items-center gap-3 border-t border-[var(--line)] bg-[var(--surface)] px-3 sm:left-16 sm:h-16 sm:gap-4 sm:px-6"
