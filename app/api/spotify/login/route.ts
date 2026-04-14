@@ -59,6 +59,8 @@ export async function GET(request: Request) {
     "user-read-recently-played",
     "user-library-read",
     "user-library-modify",
+    "playlist-read-private",
+    "playlist-read-collaborative",
   ].join(" ");
 
   const authorizeUrl = new URL("https://accounts.spotify.com/authorize");
