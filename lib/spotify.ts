@@ -31,7 +31,7 @@ function toITrack(track: SpotifyTrack): ITrack {
     title: track.name,
     artist: track.artists[0]?.name ?? "Artista desconocido",
     album: track.album?.name,
-    durationInSeconds: track.duration_ms / 1000,
+    durationInSeconds: Math.round(track.duration_ms / 1000),
     thumbnailUrl: track.album?.images?.[0]?.url ?? "/placeholder.png",
     audioUrl: track.uri,
     sourceType: "remote",
