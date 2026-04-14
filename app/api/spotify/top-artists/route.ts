@@ -17,7 +17,13 @@ export async function GET() {
     applyRefreshedCookies(response, result?.refreshed ?? null);
     return response;
   } catch (err) {
-    console.error("[top-artists]", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[top-artists]", msg);
+
+    if (msg.includes("(404)") || msg.includes("(403)")) {
+      return NextResponse.json([]);
+    }
+
     return NextResponse.json({ error: "internal" }, { status: 500 });
   }
 }
