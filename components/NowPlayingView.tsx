@@ -24,6 +24,7 @@ import type { ITrack } from "@/lib/player/types";
 import { fetchLyrics } from "@/lib/lyrics";
 import { usePlayer } from "@/providers/PlayerProvider";
 import { useHistory } from "@/hooks/useHistory";
+import { Slider } from "@/components/ui/slider";
 
 const formatDuration = (seconds?: number) => {
   if (seconds === undefined) return "--:--";
@@ -45,6 +46,8 @@ export function NowPlayingView() {
   const currentTrackId = currentTrack?.id ?? null;
   const progress = state.progressSeconds;
   const duration = state.durationSeconds;
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [seekValue, setSeekValue] = useState(0);
 
   const [heroColor, setHeroColor] = useState("rgba(99, 102, 241, 0.25)");
   const [lyrics, setLyrics] = useState<string | null>(null);
@@ -155,11 +158,20 @@ export function NowPlayingView() {
         <div className={`${mobileTab === "current" ? "block" : "hidden"} md:block`}>
           <CurrentTrackPanel
             track={currentTrack}
-            progress={progress}
+            progress={isSeeking ? seekValue : progress}
             duration={duration}
             heroColor={heroColor}
             lyrics={lyrics}
             lyricsLoading={lyricsLoading}
+            onSeekChange={(value) => {
+              setIsSeeking(true);
+              setSeekValue(value);
+            }}
+            onSeekCommit={(value) => {
+              setIsSeeking(false);
+              setSeekValue(value);
+              actions.seek(value);
+            }}
           />
         </div>
 
@@ -209,6 +221,8 @@ function CurrentTrackPanel({
   heroColor,
   lyrics,
   lyricsLoading,
+  onSeekChange,
+  onSeekCommit,
 }: {
   track: ITrack | null;
   progress: number;
@@ -216,6 +230,8 @@ function CurrentTrackPanel({
   heroColor: string;
   lyrics: string | null;
   lyricsLoading: boolean;
+  onSeekChange: (value: number) => void;
+  onSeekCommit: (value: number) => void;
 }) {
   const progressPercent = duration > 0 ? Math.min(100, (progress / duration) * 100) : 0;
 
@@ -247,6 +263,15 @@ function CurrentTrackPanel({
       </div>
 
       <div className="mt-5">
+        <Slider
+          value={duration > 0 ? [progress] : [0]}
+          max={duration || 0}
+          step={1}
+          disabled={duration <= 0}
+          onValueChange={([val]) => onSeekChange(val)}
+          onValueCommit={([val]) => onSeekCommit(val)}
+          className="mb-2 w-full"
+        />
         <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--line)]">
           <div
             className="h-full rounded-full bg-[var(--accent)] transition-all"
