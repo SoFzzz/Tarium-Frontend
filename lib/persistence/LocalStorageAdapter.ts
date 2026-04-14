@@ -9,7 +9,8 @@ import type {
 
 const PLAYLISTS_KEY = "tarium.playlists";
 const FAVORITES_KEY = "tarium.favorites";
-const HISTORY_KEY = "tarium.history";
+const HISTORY_KEY = "tarium_history";
+const LEGACY_HISTORY_KEY = "tarium.history";
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
@@ -51,7 +52,7 @@ export class LocalStorageAdapter implements PersistenceAdapter {
 
   async getHistory(): Promise<PersistedHistoryEntry[]> {
     if (!isBrowser()) return [];
-    const raw = window.localStorage.getItem(HISTORY_KEY);
+    const raw = window.localStorage.getItem(HISTORY_KEY) ?? window.localStorage.getItem(LEGACY_HISTORY_KEY);
     return safeParse<PersistedHistoryEntry[]>(raw, []);
   }
 
