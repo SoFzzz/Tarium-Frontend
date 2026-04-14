@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { searchTracks } from "@/lib/spotify";
-import { refreshAccessTokenWithExpiresIn } from "@/lib/spotify";
+import { searchTracks, refreshAccessTokenWithExpiresIn } from "@/lib/spotify";
 
 export const runtime = "nodejs";
 
@@ -26,6 +25,8 @@ function getCookie(request: Request, name: string): string | null {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q")?.trim() ?? "";
+  const type = searchParams.get("type")?.trim() || "track";
+  const limit = searchParams.get("limit") || "20";
 
   if (!query) {
     return NextResponse.json([]);
@@ -47,7 +48,6 @@ export async function GET(request: Request) {
   }
 
   if (!token) {
-    // Keep response shape consistent for the UI.
     return NextResponse.json(
       { error: "No conectado a Spotify" },
       { status: 401 },
@@ -55,25 +55,31 @@ export async function GET(request: Request) {
   }
 
   try {
-    const tracks = await searchTracks(query, token);
-    const response = NextResponse.json(tracks);
+    let data: unknown;
+
+    if (type === "track") {
+      // Use the existing helper for track search (backwards compatible)
+      data = await searchTracks(query, token);
+    } else {
+      // Generic search for other types (playlist, album, artist, etc.)
+      const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}&limit=${limit}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Spotify ${res.status}`);
+      data = await res.json();
+    }
+
+    const response = NextResponse.json(data);
 
     if (refreshed) {
       const isProd = process.env.NODE_ENV === "production";
       const expiresAtSeconds = Math.floor(Date.now() / 1000) + refreshed.expiresIn;
       response.cookies.set(ACCESS_TOKEN_COOKIE, refreshed.accessToken, {
-        httpOnly: true,
-        secure: isProd,
-        sameSite: "lax",
-        path: "/",
-        maxAge: refreshed.expiresIn,
+        httpOnly: true, secure: isProd, sameSite: "lax", path: "/", maxAge: refreshed.expiresIn,
       });
       response.cookies.set(EXPIRES_AT_COOKIE, String(expiresAtSeconds), {
-        httpOnly: true,
-        secure: isProd,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 30 * 24 * 60 * 60,
+        httpOnly: true, secure: isProd, sameSite: "lax", path: "/", maxAge: 30 * 24 * 60 * 60,
       });
     }
 
