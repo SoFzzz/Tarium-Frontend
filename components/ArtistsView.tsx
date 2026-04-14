@@ -8,7 +8,7 @@ import { ArrowLeft, Play } from "lucide-react";
 
 type ViewState = { mode: "grid" } | { mode: "detail"; artist: IArtist };
 
-export function ArtistsView() {
+export function ArtistsView({ spotifyConnected }: { spotifyConnected?: boolean }) {
   const { actions } = usePlayer();
   const [viewState, setViewState] = useState<ViewState>({ mode: "grid" });
   const [artists, setArtists] = useState<IArtist[]>([]);
@@ -21,13 +21,14 @@ export function ArtistsView() {
 
   // Load grid
   useEffect(() => {
+    if (!spotifyConnected) return;
     setLoading(true);
     fetch("/api/spotify/top-artists")
       .then((r) => r.json())
       .then((data) => { if (!data.error) setArtists(data); })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [spotifyConnected]);
 
   // Load detail
   useEffect(() => {
@@ -69,9 +70,13 @@ export function ArtistsView() {
         </p>
         {loading ? (
           <div className="mt-8 text-center text-sm text-[var(--muted)]">Cargando artistas…</div>
-        ) : artists.length === 0 ? (
+        ) : !spotifyConnected ? (
           <div className="mt-8 text-center text-sm text-[var(--muted)]">
             Conecta Spotify para ver tus artistas más escuchados.
+          </div>
+        ) : artists.length === 0 ? (
+          <div className="mt-8 text-center text-sm text-[var(--muted)]">
+            No se encontraron artistas.
           </div>
         ) : (
           <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
