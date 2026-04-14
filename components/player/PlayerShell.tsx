@@ -1158,7 +1158,7 @@ function SortableHomeQueueRow({
       ref={setNodeRef}
       style={style}
       className={`group flex items-center gap-2 rounded-xl px-2 py-2 transition-colors ${
-        isCurrent ? "bg-[rgba(97,181,184,0.12)]" : "hover:bg-[var(--surface-elevated)]"
+        isCurrent ? "bg-[rgba(var(--brand-primary-rgb),0.12)] text-[var(--accent)]" : "hover:bg-[var(--surface-elevated)]"
       } ${isDragging ? "opacity-70" : ""}`}
     >
       <button
