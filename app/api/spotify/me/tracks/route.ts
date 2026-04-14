@@ -3,10 +3,9 @@ import { getValidToken, applyRefreshedCookies } from "@/lib/spotify-token";
 
 export const runtime = "nodejs";
 
-// GET /api/spotify/me/tracks — fetch user's saved tracks
 export async function GET(request: NextRequest) {
   try {
-    const result = await getValidToken(request);
+    const result = await getValidToken();
     if (!result) {
       return NextResponse.json({ error: "no_token" }, { status: 401 });
     }
@@ -42,10 +41,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PUT /api/spotify/me/tracks — save tracks to user's library
 export async function PUT(request: NextRequest) {
   try {
-    const result = await getValidToken(request);
+    const result = await getValidToken();
     if (!result) {
       return NextResponse.json({ error: "no_token" }, { status: 401 });
     }
@@ -71,10 +69,9 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE /api/spotify/me/tracks — remove tracks from user's library
 export async function DELETE(request: NextRequest) {
   try {
-    const result = await getValidToken(request);
+    const result = await getValidToken();
     if (!result) {
       return NextResponse.json({ error: "no_token" }, { status: 401 });
     }
