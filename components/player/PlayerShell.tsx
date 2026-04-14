@@ -64,6 +64,7 @@ import { useTheme } from "next-themes";
 import { AuthModalControlled } from "@/components/auth/AuthModal";
 import { useSpotifySession } from "@/hooks/useSpotifySession";
 import { HomeView } from "@/components/HomeView";
+import { NowPlayingView } from "@/components/NowPlayingView";
 
 const formatDuration = (seconds?: number) => {
   if (seconds === undefined) {
@@ -102,6 +103,11 @@ export function PlayerShell() {
   const [playlistTracks, setPlaylistTracks] = useState<PlaylistTrack[] | null>(null);
   const [loadingPlaylistTracks, setLoadingPlaylistTracks] = useState(false);
   const [isSeeking, setIsSeeking] = useState(false);
+
+  useEffect(() => {
+    const unsub = actions.onTrackPlay(() => setActiveView("nowplaying"));
+    return unsub;
+  }, [actions]);
   const [seekValue, setSeekValue] = useState<number | null>(null);
   const [displayProgress, setDisplayProgress] = useState(0);
 
@@ -507,7 +513,9 @@ export function PlayerShell() {
             <div className="grid gap-4 grid-cols-1">
               {/* Columna unica: vistas dinámicas */}
               <div className="flex flex-col gap-4">
-                {activeView === "home" ? (
+                {activeView === "nowplaying" ? (
+                  <NowPlayingView />
+                ) : activeView === "home" ? (
                   <HomeView session={spotifySession} />
                 ) : (<> 
                 {/* Vista principal / biblioteca según activeView */}
@@ -1021,244 +1029,6 @@ type SidebarIconProps = {
   active?: boolean;
   onClick?: () => void;
 };
-
-type HomeQueuePanelProps = {
-  queue: ITrack[];
-  currentTrackId: string | null;
-  authenticated: boolean;
-  isFavorite: (trackId: string) => boolean;
-  onPlayTrack: (id: string) => void;
-  onReorder: (newQueue: ITrack[]) => void;
-  onRemoveTrack: (id: string) => void;
-  onToggleFavorite: (track: ITrack) => void | Promise<void>;
-};
-
-function HomeQueuePanel({
-  queue,
-  currentTrackId,
-  authenticated,
-  isFavorite,
-  onPlayTrack,
-  onReorder,
-  onRemoveTrack,
-  onToggleFavorite,
-}: HomeQueuePanelProps) {
-  const [orderedQueue, setOrderedQueue] = useState<ITrack[]>(queue);
-
-  useEffect(() => {
-    setOrderedQueue(queue);
-  }, [queue]);
-
-  const ids = useMemo(() => orderedQueue.map((track) => track.id), [orderedQueue]);
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 120, tolerance: 8 },
-    }),
-  );
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-    if (active.id === over.id) return;
-
-    const oldIndex = orderedQueue.findIndex((track) => track.id === active.id);
-    const newIndex = orderedQueue.findIndex((track) => track.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    const next = arrayMove(orderedQueue, oldIndex, newIndex);
-    setOrderedQueue(next);
-    Promise.resolve().then(() => onReorder(next));
-  };
-
-  return (
-    <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
-            Cola actual
-          </p>
-          <p className="text-xs text-[var(--muted)]">
-            Reordena, marca favoritos o elimina tracks de la cola
-          </p>
-        </div>
-        <span className="text-xs text-[var(--muted)]">{queue.length} tracks</span>
-      </div>
-
-      {orderedQueue.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-[var(--line)] px-4 py-6 text-sm text-[var(--muted)]">
-          La cola esta vacia. Carga archivos en tu biblioteca local para empezar.
-        </div>
-      ) : (
-        <div className="max-h-[32rem] overflow-y-auto pr-1">
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-              <ul className="space-y-1 text-xs">
-                {orderedQueue.map((track) => (
-                  <SortableHomeQueueRow
-                    key={track.id}
-                    track={track}
-                    currentTrackId={currentTrackId}
-                    authenticated={authenticated}
-                    isFav={isFavorite(track.id)}
-                    onPlayTrack={onPlayTrack}
-                    onRemoveTrack={onRemoveTrack}
-                    onToggleFavorite={onToggleFavorite}
-                  />
-                ))}
-              </ul>
-            </SortableContext>
-          </DndContext>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SortableHomeQueueRow({
-  track,
-  currentTrackId,
-  authenticated,
-  isFav,
-  onPlayTrack,
-  onRemoveTrack,
-  onToggleFavorite,
-}: {
-  track: ITrack;
-  currentTrackId: string | null;
-  authenticated: boolean;
-  isFav: boolean;
-  onPlayTrack: (id: string) => void;
-  onRemoveTrack: (id: string) => void;
-  onToggleFavorite: (track: ITrack) => void | Promise<void>;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: track.id,
-  });
-
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  const isCurrent = track.id === currentTrackId;
-
-  return (
-    <li
-      ref={setNodeRef}
-      style={style}
-      className={`group flex items-center gap-2 rounded-xl px-2 py-2 transition-colors ${
-        isCurrent ? "bg-[rgba(var(--brand-primary-rgb),0.12)] text-[var(--accent)]" : "hover:bg-[var(--surface-elevated)]"
-      } ${isDragging ? "opacity-70" : ""}`}
-    >
-      <button
-        type="button"
-        aria-label="Reordenar"
-        className="flex h-8 w-8 touch-none items-center justify-center rounded-md text-[var(--muted)] hover:text-[var(--foreground)] cursor-grab active:cursor-grabbing"
-        {...attributes}
-        {...listeners}
-        onClick={(event) => event.preventDefault()}
-      >
-        <GripVertical size={16} />
-      </button>
-
-      <button
-        type="button"
-        className="flex flex-1 items-center gap-3 text-left"
-        onClick={() => onPlayTrack(track.id)}
-      >
-        <img
-          src={track.thumbnailUrl}
-          alt={track.title}
-          className="h-10 w-10 flex-shrink-0 rounded-lg object-cover"
-        />
-        <div className="min-w-0">
-          <p className={`truncate text-[13px] font-semibold ${isCurrent ? "text-[var(--accent)]" : ""}`}>
-            {track.title}
-          </p>
-          <p className="truncate text-[11px] text-[var(--muted)]">{track.artist}</p>
-        </div>
-      </button>
-
-      <button
-        type="button"
-        className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
-          authenticated
-            ? isFav
-              ? "border-[var(--accent)] text-[var(--accent)]"
-              : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
-            : "border-[var(--line)] text-[var(--muted)] opacity-40"
-        }`}
-        onClick={(event) => {
-          event.stopPropagation();
-          void onToggleFavorite(track);
-        }}
-        aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
-        title={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
-      >
-        <Heart size={14} fill={isFav ? "currentColor" : "none"} />
-      </button>
-
-      <button
-        type="button"
-        className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-red-500 hover:text-red-500"
-        onClick={(event) => {
-          event.stopPropagation();
-          onRemoveTrack(track.id);
-        }}
-        aria-label="Eliminar de la cola"
-        title="Eliminar de la cola"
-      >
-        <Trash2 size={14} />
-      </button>
-    </li>
-  );
-}
-
-function SidebarIcon({ icon: Icon, label, active, onClick }: SidebarIconProps) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
-            active
-              ? "bg-[var(--accent)] text-white"
-              : "text-[var(--muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)]"
-          }`}
-          onClick={onClick}
-        >
-          <Icon size={18} />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="right">{label}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-function MobileNavIcon({ icon: Icon, label, active, onClick }: SidebarIconProps) {
-  return (
-    <button
-      type="button"
-      className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-3 py-1.5 text-[10px] transition-colors ${
-        active
-          ? "text-[var(--accent)]"
-          : "text-[var(--muted)] hover:text-[var(--foreground)]"
-      }`}
-      onClick={onClick}
-    >
-      <Icon size={18} />
-      <span>{label}</span>
-    </button>
-  );
-}
 
 function ThemeToggleButton() {
   const { theme, setTheme } = useTheme();
