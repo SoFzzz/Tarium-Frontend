@@ -68,6 +68,7 @@ import { NowPlayingView } from "@/components/NowPlayingView";
 import { ArtistsView } from "@/components/ArtistsView";
 import { GenresView } from "@/components/GenresView";
 import { AlbumsView } from "@/components/AlbumsView";
+import { SearchView } from "@/components/SearchView";
 
 const formatDuration = (seconds?: number) => {
   if (seconds === undefined) {
@@ -433,7 +434,7 @@ export function PlayerShell() {
             <nav className="flex flex-col items-center gap-3 text-[var(--muted)]">
               {/* Descubrimiento */}
               <SidebarIcon icon={Home} label="Inicio" active={activeView === "home"} onClick={() => setActiveView("home")} />
-              <SidebarIcon icon={Search} label="Buscar" active={activeView === "search"} onClick={() => setActiveView("home")} />
+              <SidebarIcon icon={Search} label="Buscar" active={activeView === "search"} onClick={() => setActiveView("search")} />
               
               <hr className="my-1 w-8 border-[var(--line)] opacity-50" />
 
@@ -572,6 +573,8 @@ export function PlayerShell() {
                   <GenresView spotifyConnected={spotifySession.status === "connected"} />
                 ) : activeView === "albums" ? (
                   <AlbumsView spotifyConnected={spotifySession.status === "connected"} />
+                ) : activeView === "search" ? (
+                  <SearchView />
                 ) : (<> 
                 {/* Vista principal / biblioteca según activeView */}
                 <div className="flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
@@ -852,7 +855,7 @@ export function PlayerShell() {
             style={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom, 0px))" }}
           >
             <MobileNavIcon icon={Home} label="Inicio" active={activeView === "home"} onClick={() => setActiveView("home")} />
-            <MobileNavIcon icon={Search} label="Buscar" active={activeView === "search"} onClick={() => setActiveView("home")} />
+            <MobileNavIcon icon={Search} label="Buscar" active={activeView === "search"} onClick={() => setActiveView("search")} />
             <MobileNavIcon icon={Music2} label="Artistas" active={activeView === "artists"} onClick={() => setActiveView("artists")} />
             <MobileNavIcon icon={Disc3} label="Álbumes" active={activeView === "albums"} onClick={() => setActiveView("albums")} />
             <MobileNavIcon icon={Radio} label="Géneros" active={activeView === "genres"} onClick={() => setActiveView("genres")} />
