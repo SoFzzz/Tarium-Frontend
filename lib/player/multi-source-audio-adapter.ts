@@ -41,13 +41,25 @@ export class MultiSourceAudioAdapter implements MediaAdapter {
       (track.source === "spotify" && Boolean(track.audioUrl)) ||
       (typeof track.audioUrl === "string" && track.audioUrl.startsWith("spotify:"));
 
+    const incoming: AdapterKind = isSpotify ? "spotify" : "howler";
+
+    // Stop the previous adapter when switching sources to prevent overlap
+    if (incoming !== this.active) {
+      const prev = this.active === "spotify" ? this.spotify : this.howler;
+      try {
+        await prev.pause();
+        await prev.destroy?.();
+      } catch {
+        // Best-effort cleanup
+      }
+      this.active = incoming;
+    }
+
     if (isSpotify) {
-      this.active = "spotify";
       await this.spotify.play(track);
       return;
     }
 
-    this.active = "howler";
     await this.howler.play(track);
   }
 
