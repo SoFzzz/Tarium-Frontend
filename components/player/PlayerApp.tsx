@@ -6,6 +6,14 @@ import { PlayerShell } from "./PlayerShell";
 import { PlayerHistoryProvider } from "@/providers/PlayerHistoryProvider";
 
 export function PlayerApp() {
+  // Fix 3: Clean OAuth query params from URL after redirect
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("spotify") || url.searchParams.has("spotify_error")) {
+      window.history.replaceState({}, "", "/");
+    }
+  }, []);
+
   useEffect(() => {
     const id = "spotify-player-sdk";
     if (document.getElementById(id)) return;
