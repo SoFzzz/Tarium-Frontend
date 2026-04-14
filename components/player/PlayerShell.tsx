@@ -23,7 +23,6 @@ import {
   Repeat1,
   GripVertical,
   Trash2,
-,
   Music2,
   Disc3,
   Radio
@@ -78,6 +77,61 @@ const formatDuration = (seconds?: number) => {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 };
 
+function SidebarIcon({
+  icon: Icon,
+  active,
+  onClick,
+  label,
+}: {
+  icon: React.ElementType;
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${
+        active
+          ? "bg-[var(--tar-teal)] text-[var(--tar-bg)]"
+          : "text-[var(--color-text-secondary)] hover:text-[var(--tar-mint)]"
+      }`}
+    >
+      <Icon size={20} />
+    </button>
+  );
+}
+
+
+function MobileNavIcon({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: React.ElementType;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex flex-col items-center gap-1 px-3 py-1 text-xs transition-colors ${
+        active ? "text-[var(--tar-teal)]" : "text-[var(--color-text-secondary)]"
+      }`}
+    >
+      <Icon size={18} />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+
+
+
+
 export function PlayerShell() {
   const { state, actions } = usePlayer();
   const { user, signOut } = useAuth();
@@ -98,7 +152,7 @@ export function PlayerShell() {
   const [deletePlaylistId, setDeletePlaylistId] = useState<string | null>(null);
   const [deletePlaylistLoading, setDeletePlaylistLoading] = useState(false);
   
-  const [activeView, setActiveView] = useState<"home" | "library" | "favorites" | "playlists" | "artists" | "albums" | "genres" | "nowplaying">("home");
+  const [activeView, setActiveView] = useState<"home" | "library" | "favorites" | "playlists" | "artists" | "albums" | "genres" | "nowplaying" | "search">("home");
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [playlistTracks, setPlaylistTracks] = useState<PlaylistTrack[] | null>(null);
   const [loadingPlaylistTracks, setLoadingPlaylistTracks] = useState(false);
