@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const result = await getValidToken();
     if (!result) {
-      return NextResponse.json({ error: "no_token" }, { status: 401 });
+      return NextResponse.json(null, { status: 200 });
     }
 
     const res = await fetch("https://api.spotify.com/v1/me", {
@@ -15,7 +15,7 @@ export async function GET() {
     });
 
     if (!res.ok) {
-      return NextResponse.json({ error: "spotify_error" }, { status: res.status === 401 ? 401 : 502 });
+      return NextResponse.json(null, { status: 200 });
     }
 
     const data = (await res.json()) as {
@@ -33,8 +33,7 @@ export async function GET() {
     });
     applyRefreshedCookies(response, result.refreshed);
     return response;
-  } catch (err) {
-    console.error("[spotify/me]", err);
-    return NextResponse.json({ error: "internal" }, { status: 500 });
+  } catch {
+    return NextResponse.json(null, { status: 200 });
   }
 }
