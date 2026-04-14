@@ -18,6 +18,7 @@ interface UseFavorites {
   favorites: Favorite[];
   loading: boolean;
   error: string | null;
+  spotifyFavIds: Set<string>;
   getFavorites: () => Promise<void>;
   addFavorite: (track: Omit<Favorite, 'id' | 'user_id' | 'created_at'>) => Promise<Favorite>;
   removeFavorite: (trackId: string) => Promise<void>;
@@ -29,6 +30,7 @@ export function useFavorites(): UseFavorites {
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [spotifyFavIds, setSpotifyFavIds] = useState<Set<string>>(new Set());
 
   const userId = session?.user?.id as string | undefined;
 
@@ -94,6 +96,18 @@ export function useFavorites(): UseFavorites {
         if (error) throw error;
         const created = data as Favorite;
         setFavorites((prev) => [created, ...prev.filter((f) => f.track_id !== created.track_id)]);
+
+        // Sync to Spotify if it looks like a Spotify track ID
+        if (track.track_id && !track.track_id.startsWith('local-')) {
+          fetch('/api/spotify/me/tracks', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: [track.track_id] }),
+          }).then(() => {
+            setSpotifyFavIds(prev => new Set(prev).add(track.track_id));
+          }).catch(() => { /* silently fail spotify sync */ });
+        }
+
         return created;
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error al agregar favorito';
@@ -128,6 +142,21 @@ export function useFavorites(): UseFavorites {
 
         if (error) throw error;
         setFavorites((prev) => prev.filter((f) => f.track_id !== trackId));
+
+        // Remove from Spotify too
+        if (trackId && !trackId.startsWith('local-')) {
+          fetch('/api/spotify/me/tracks', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: [trackId] }),
+          }).then(() => {
+            setSpotifyFavIds(prev => {
+              const next = new Set(prev);
+              next.delete(trackId);
+              return next;
+            });
+          }).catch(() => { /* silently fail spotify sync */ });
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error al remover favorito';
         setError(message);
@@ -155,12 +184,23 @@ export function useFavorites(): UseFavorites {
     }
 
     void getFavorites();
+
+    // Also load Spotify saved tracks for merge/badge
+    fetch('/api/spotify/me/tracks')
+      .then(r => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setSpotifyFavIds(new Set(data.map((t: any) => t.id)));
+        }
+      })
+      .catch(() => { /* not connected or error */ });
   }, [user, authLoading, getFavorites]);
 
   return {
     favorites,
     loading,
     error,
+    spotifyFavIds,
     getFavorites,
     addFavorite,
     removeFavorite,
