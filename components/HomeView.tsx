@@ -61,7 +61,8 @@ export function HomeView({ session }: { session: SpotifySessionProp }) {
   }, [session.status]);
 
   const handlePlayTrack = async (track: ITrack) => {
-    actions.addTrackNext(track);
+    // Home clicks should always start playback.
+    actions.loadQueue([track]);
     await actions.playById(track.id);
   };
 
@@ -137,12 +138,12 @@ export function HomeView({ session }: { session: SpotifySessionProp }) {
              Recomendados para ti
            </p>
            <div className="flex flex-col gap-1 sm:grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-             {recommendations.slice(0, 12).map(track => (
-               <div 
-                 key={track.id} 
-                 className="group flex items-center justify-between rounded-xl border border-transparent p-2 hover:bg-[var(--surface-elevated)] hover:border-[var(--line)] transition-colors cursor-pointer"
-                 onClick={() => handlePlayTrack(track)}
-               >
+              {recommendations.slice(0, 12).map(track => (
+                <div 
+                  key={track.id} 
+                  className="group flex items-center justify-between rounded-xl border border-transparent p-2 hover:bg-[var(--surface-elevated)] hover:border-[var(--line)] transition-colors cursor-pointer"
+                  onClick={() => handlePlayTrack(track)}
+                >
                  <div className="flex items-center gap-3 overflow-hidden">
                    <img src={track.thumbnailUrl} alt={track.title} className="h-10 w-10 shrink-0 rounded-md object-cover" />
                    <div className="min-w-0">
@@ -150,14 +151,22 @@ export function HomeView({ session }: { session: SpotifySessionProp }) {
                      <p className="truncate text-[10px] text-[var(--muted)]">{track.artist}</p>
                    </div>
                  </div>
-                 <button className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white opacity-0 transition-opacity hover:scale-110 group-hover:opacity-100">
-                   <Play size={14} className="ml-0.5" />
-                 </button>
-               </div>
-             ))}
-           </div>
-        </div>
-      )}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handlePlayTrack(track);
+                    }}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white opacity-0 transition-opacity hover:scale-110 group-hover:opacity-100"
+                  >
+                    <Play size={14} className="ml-0.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+         </div>
+       )}
 
       {/* Utilities */}
       <style dangerouslySetInnerHTML={{__html: `
