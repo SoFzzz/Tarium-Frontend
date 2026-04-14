@@ -1,27 +1,33 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f1f9f9;
-  --surface: #ffffff;
-  --surface-elevated: #e6eaea;
-  --foreground: #091515;
-  --muted: #a7afd7;
-  --accent: #61b5b8;
-  --accent-hover: #529b9e;
-  --accent-active: #458285;
-  --line: #dbe4e4;
+  --background: #efeaea;
+  --surface: #fdfcfc;
+  --surface-elevated: #e4dfdf;
+  --foreground: #0c1514;
+  --muted: #8ca6d9;
+  --accent: #34c7a2;
+  --accent-hover: #2eb391;
+  --accent-active: #27987b;
+  --line: #d6d0d0;
+
+  --brand-primary-rgb: 52, 199, 162;
+  --brand-accent-rgb: 105, 102, 227;
 }
 
 .dark {
-  --background: #091515;
-  --surface: #0a1b1b;
-  --surface-elevated: #0f2525;
-  --foreground: #f1f9f9;
-  --muted: #a7afd7;
-  --accent: #7f72c0;
-  --accent-hover: #9084d0;
-  --accent-active: #a296df;
-  --line: #1c3535;
+  --background: #1c1818;
+  --surface: #221d1d;
+  --surface-elevated: #2d2626;
+  --foreground: #ebf5f5;
+  --muted: #253e6b;
+  --accent: #34c7a2;
+  --accent-hover: #2eb391;
+  --accent-active: #27987b;
+  --line: #3d3434;
+
+  --brand-primary-rgb: 52, 199, 162;
+  --brand-accent-rgb: 61, 55, 201;
 }
 
 @theme inline {
@@ -55,7 +61,7 @@ button {
 }
 
 ::selection {
-  background: rgba(97, 181, 184, 0.32);
+  background: rgba(var(--brand-primary-rgb), 0.32);
 }
 
 .player-shell::before {
@@ -63,8 +69,8 @@ button {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at top right, rgba(127, 114, 192, 0.15), transparent 34%),
-    radial-gradient(circle at bottom left, rgba(97, 181, 184, 0.15), transparent 24%);
+    radial-gradient(circle at top right, rgba(var(--brand-accent-rgb), 0.15), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(var(--brand-primary-rgb), 0.15), transparent 24%);
   pointer-events: none;
 }
 
@@ -74,7 +80,7 @@ button {
   border-radius: 999px;
   filter: blur(64px);
   opacity: 0.6;
-  background: radial-gradient(circle, rgba(127, 114, 192, 0.5), transparent 70%);
+  background: radial-gradient(circle, rgba(var(--brand-accent-rgb), 0.5), transparent 70%);
 }
 
 .fade-rise {
