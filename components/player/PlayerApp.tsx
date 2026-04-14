@@ -10,6 +10,15 @@ export function PlayerApp() {
     const id = "spotify-player-sdk";
     if (document.getElementById(id)) return;
 
+    // Define the callback BEFORE loading the script so it's available
+    // when the SDK finishes loading. If a previous callback exists, chain it.
+    if (!window.onSpotifyWebPlaybackSDKReady) {
+      window.onSpotifyWebPlaybackSDKReady = () => {
+        // Noop — the actual initialization happens in SpotifyAudioAdapter.
+        // This prevents "onSpotifyWebPlaybackSDKReady is not defined" console errors.
+      };
+    }
+
     const script = document.createElement("script");
     script.id = id;
     script.src = "https://sdk.scdn.co/spotify-player.js";
