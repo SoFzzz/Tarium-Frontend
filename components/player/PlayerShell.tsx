@@ -139,7 +139,7 @@ export function PlayerShell() {
   const { user, signOut } = useAuth();
   const spotifySession = useSpotifySession();
   const { playlists, createPlaylist, getPlaylistTracks, addTrackToPlaylist, removeTrackFromPlaylist, deletePlaylist } = usePlaylists();
-  const { favorites, addFavorite, removeFavorite, isFavorite } = useFavorites();
+  const { favorites, addFavorite, removeFavorite, isFavorite, spotifyFavIds } = useFavorites();
 
   // Set estable: evita re-renders de LibraryView por ticks de progreso.
   const favoritedIds = useMemo(() => new Set<string>(favorites.map((f) => f.track_id)), [favorites]);
@@ -743,6 +743,7 @@ export function PlayerShell() {
                   <FavoritesView
                     favorites={favorites}
                     authenticated={Boolean(user)}
+                    spotifyFavIds={spotifyFavIds}
                     onPlayFavorite={(fav) => {
                       const trackInQueue = queue.find((t) => t.id === fav.track_id);
                       if (trackInQueue) {
