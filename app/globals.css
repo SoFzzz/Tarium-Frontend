@@ -1,5 +1,5 @@
-@import "tailwindcss";
 @import url("https://fonts.googleapis.com/css?family=SN%20Pro:700|SN%20Pro:400");
+@import "tailwindcss";
 
 :root {
   --background: #efeaea;
