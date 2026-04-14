@@ -2,41 +2,131 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-/**
- * Spotify redirects here after authorization (/callback).
- * This simply re-routes to the existing /api/spotify/callback handler
- * by forwarding the query params.
- */
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const targetUrl = new URL("/api/spotify/callback", request.url);
+const OAUTH_STATE_COOKIE = "spotify_oauth_state";
+const CODE_VERIFIER_COOKIE = "spotify_code_verifier";
 
-  // Forward all query params (code, state, error, etc.)
-  searchParams.forEach((value, key) => {
-    targetUrl.searchParams.set(key, value);
-  });
+const ACCESS_TOKEN_COOKIE = "spotify_access_token";
+const REFRESH_TOKEN_COOKIE = "spotify_refresh_token";
+const EXPIRES_AT_COOKIE = "spotify_expires_at";
 
-  // Also forward cookies so the PKCE verifier/state checks work
-  const response = await fetch(targetUrl.toString(), {
-    headers: {
-      cookie: request.headers.get("cookie") ?? "",
-    },
-    redirect: "manual",
-  });
+function getRequestOrigin(request: Request): string {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  if (forwardedProto && forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+  return new URL(request.url).origin;
+}
 
-  // The /api/spotify/callback returns a 307 redirect with Set-Cookie headers.
-  // We need to forward both the redirect and cookies.
-  const location = response.headers.get("location");
-  if (location) {
-    const res = NextResponse.redirect(location);
-    // Forward all Set-Cookie headers from the callback response
-    const setCookies = response.headers.getSetCookie?.() ?? [];
-    for (const cookie of setCookies) {
-      res.headers.append("set-cookie", cookie);
+function getRedirectUri(request: Request): string {
+  const configured = process.env.SPOTIFY_REDIRECT_URI?.trim();
+  if (configured) return configured;
+  return new URL("/callback", getRequestOrigin(request)).toString();
+}
+
+function redirectHome(request: Request, params?: Record<string, string>): NextResponse {
+  const url = new URL("/", getRequestOrigin(request));
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
     }
-    return res;
+  }
+  return NextResponse.redirect(url);
+}
+
+export async function GET(request: NextRequest) {
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  const error = url.searchParams.get("error");
+
+  if (error) {
+    return redirectHome(request, { spotify: "error", reason: error });
   }
 
-  // Fallback: if no redirect, forward the response as-is
-  return NextResponse.redirect(new URL("/?spotify_error=true", request.url));
+  if (!code || !state) {
+    return redirectHome(request, { spotify: "error", reason: "missing_code" });
+  }
+
+  const clientId = process.env.SPOTIFY_CLIENT_ID?.trim();
+  if (!clientId) {
+    return NextResponse.json({ error: "Missing SPOTIFY_CLIENT_ID" }, { status: 500 });
+  }
+
+  // Read state & code_verifier from cookies
+  const storedState = request.cookies.get(OAUTH_STATE_COOKIE)?.value;
+  const codeVerifier = request.cookies.get(CODE_VERIFIER_COOKIE)?.value;
+
+  if (!storedState || storedState !== state) {
+    return redirectHome(request, { spotify: "error", reason: "state_mismatch" });
+  }
+
+  if (!codeVerifier) {
+    return redirectHome(request, { spotify: "error", reason: "missing_verifier" });
+  }
+
+  // Exchange code for tokens
+  const body = new URLSearchParams();
+  body.set("grant_type", "authorization_code");
+  body.set("code", code);
+  body.set("redirect_uri", getRedirectUri(request));
+  body.set("client_id", clientId);
+  body.set("code_verifier", codeVerifier);
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET?.trim();
+  if (clientSecret) {
+    headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
+  }
+
+  const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers,
+    body,
+  });
+
+  if (!tokenRes.ok) {
+    return redirectHome(request, { spotify: "error", reason: "token_exchange_failed" });
+  }
+
+  const data = (await tokenRes.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  };
+
+  const accessToken = data.access_token;
+  const refreshToken = data.refresh_token;
+  const expiresIn = typeof data.expires_in === "number" ? data.expires_in : null;
+
+  if (!accessToken || !refreshToken || !expiresIn) {
+    return redirectHome(request, { spotify: "error", reason: "invalid_token_payload" });
+  }
+
+  const response = redirectHome(request, { spotify: "connected" });
+  const isProd = process.env.NODE_ENV === "production";
+  const expiresAtSeconds = Math.floor(Date.now() / 1000) + expiresIn;
+
+  response.cookies.set(ACCESS_TOKEN_COOKIE, accessToken, {
+    httpOnly: true, secure: isProd, sameSite: "lax", path: "/", maxAge: expiresIn,
+  });
+  response.cookies.set(REFRESH_TOKEN_COOKIE, refreshToken, {
+    httpOnly: true, secure: isProd, sameSite: "lax", path: "/", maxAge: 30 * 24 * 60 * 60,
+  });
+  response.cookies.set(EXPIRES_AT_COOKIE, String(expiresAtSeconds), {
+    httpOnly: true, secure: isProd, sameSite: "lax", path: "/", maxAge: 30 * 24 * 60 * 60,
+  });
+
+  // Cleanup OAuth flow cookies
+  response.cookies.set(OAUTH_STATE_COOKIE, "", {
+    httpOnly: true, secure: isProd, sameSite: "lax", path: "/", maxAge: 0,
+  });
+  response.cookies.set(CODE_VERIFIER_COOKIE, "", {
+    httpOnly: true, secure: isProd, sameSite: "lax", path: "/", maxAge: 0,
+  });
+
+  return response;
 }
