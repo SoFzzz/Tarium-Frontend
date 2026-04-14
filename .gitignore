@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# AI Agent Context and Resources
+AGENTS.md
+poti.txt
+alternativa/
+alternativa.zip

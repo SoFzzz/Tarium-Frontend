@@ -1,27 +1,27 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5f0eb;
+  --background: #f1f9f9;
   --surface: #ffffff;
-  --surface-elevated: #faf7f4;
-  --foreground: #2a2420;
-  --muted: #8a7f78;
-  --accent: #e85d3f;
-  --accent-hover: #c94d32;
-  --accent-active: #b04428;
-  --line: #e8e0d8;
+  --surface-elevated: #e6eaea;
+  --foreground: #091515;
+  --muted: #a7afd7;
+  --accent: #61b5b8;
+  --accent-hover: #529b9e;
+  --accent-active: #458285;
+  --line: #dbe4e4;
 }
 
 .dark {
-  --background: #0f0f0f;
-  --surface: #1a1a1a;
-  --surface-elevated: #242424;
-  --foreground: #ffffff;
-  --muted: #888888;
-  --accent: #e85d3f;
-   --accent-hover: #c94d32;
-   --accent-active: #b04428;
-  --line: #2a2a2a;
+  --background: #091515;
+  --surface: #0a1b1b;
+  --surface-elevated: #0f2525;
+  --foreground: #f1f9f9;
+  --muted: #a7afd7;
+  --accent: #7f72c0;
+  --accent-hover: #9084d0;
+  --accent-active: #a296df;
+  --line: #1c3535;
 }
 
 @theme inline {
@@ -55,7 +55,7 @@ button {
 }
 
 ::selection {
-  background: rgba(253, 123, 65, 0.32);
+  background: rgba(97, 181, 184, 0.32);
 }
 
 .player-shell::before {
@@ -63,8 +63,8 @@ button {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at top right, rgba(255, 122, 92, 0.22), transparent 34%),
-    radial-gradient(circle at bottom left, rgba(255, 228, 214, 0.32), transparent 24%);
+    radial-gradient(circle at top right, rgba(127, 114, 192, 0.15), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(97, 181, 184, 0.15), transparent 24%);
   pointer-events: none;
 }
 
@@ -74,7 +74,7 @@ button {
   border-radius: 999px;
   filter: blur(64px);
   opacity: 0.6;
-  background: radial-gradient(circle, rgba(255, 122, 92, 0.7), transparent 70%);
+  background: radial-gradient(circle, rgba(127, 114, 192, 0.5), transparent 70%);
 }
 
 .fade-rise {
