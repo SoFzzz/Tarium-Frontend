@@ -12,8 +12,7 @@ type SpotifyMe = {
 type SpotifySessionState =
   | { status: "loading"; me: null }
   | { status: "disconnected"; me: null }
-  | { status: "connected"; me: SpotifyMe }
-  | { status: "error"; me: null };
+  | { status: "connected"; me: SpotifyMe };
 
 export function useSpotifySession() {
   const [state, setState] = useState<SpotifySessionState>({ status: "loading", me: null });
@@ -26,20 +25,11 @@ export function useSpotifySession() {
         const res = await fetch("/api/spotify/me", { cache: "no-store" });
         if (!alive) return;
 
-        if (res.status === 401) {
-          setState({ status: "disconnected", me: null });
-          return;
-        }
+        // /me now always returns 200. Body is null when no session, or user object when connected.
+        const data = await res.json();
 
-        if (!res.ok) {
-          // Treat server errors as disconnected so UI doesn't get stuck on "loading"
-          setState({ status: "disconnected", me: null });
-          return;
-        }
-
-        const me = (await res.json()) as SpotifyMe;
-        if (me.id) {
-          setState({ status: "connected", me });
+        if (data && data.id) {
+          setState({ status: "connected", me: data as SpotifyMe });
         } else {
           setState({ status: "disconnected", me: null });
         }
