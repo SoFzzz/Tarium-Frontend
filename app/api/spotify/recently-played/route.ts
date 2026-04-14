@@ -1,12 +1,12 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getRecentlyPlayedAlbums } from "@/lib/spotify";
 import { getValidToken, applyRefreshedCookies } from "@/lib/spotify-token";
 
 export const runtime = "nodejs";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const result = await getValidToken(request);
+    const result = await getValidToken();
     if (!result) {
       return NextResponse.json({ error: "no_token" }, { status: 401 });
     }
