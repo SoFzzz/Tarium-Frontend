@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { type ITrack } from "@/lib/player/types";
-import { type IArtist, type IAlbum } from "@/lib/spotify";
+import { type IArtist } from "@/lib/spotify";
 import { usePlayer } from "@/providers/PlayerProvider";
 import { ArrowLeft, Play } from "lucide-react";
 
@@ -16,7 +16,6 @@ export function ArtistsView({ spotifyConnected }: { spotifyConnected?: boolean }
 
   // Detail state
   const [topTracks, setTopTracks] = useState<ITrack[]>([]);
-  const [albums, setAlbums] = useState<IAlbum[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Load grid
@@ -36,15 +35,11 @@ export function ArtistsView({ spotifyConnected }: { spotifyConnected?: boolean }
     const id = viewState.artist.id;
     setDetailLoading(true);
     setTopTracks([]);
-    setAlbums([]);
 
-    Promise.all([
-      fetch(`/api/spotify/artists/${id}/top-tracks`).then((r) => r.json()),
-      fetch(`/api/spotify/artists/${id}/albums`).then((r) => r.json()),
-    ])
-      .then(([tracks, albs]) => {
+    fetch(`/api/spotify/artists/${id}/top-tracks`)
+      .then((r) => r.json())
+      .then((tracks) => {
         if (!tracks.error) setTopTracks(tracks);
-        if (!albs.error) setAlbums(albs);
       })
       .catch(console.error)
       .finally(() => setDetailLoading(false));
@@ -180,27 +175,7 @@ export function ArtistsView({ spotifyConnected }: { spotifyConnected?: boolean }
             </div>
           )}
 
-          {/* Albums */}
-          {albums.length > 0 && (
-            <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
-              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--muted)]">
-                Álbumes
-              </p>
-              <div className="flex gap-4 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                {albums.map((album) => (
-                  <div key={album.id} className="flex min-w-[130px] flex-col gap-2 group">
-                    <div className="h-[130px] w-[130px] overflow-hidden rounded-xl border border-[var(--line)] shadow-sm transition-transform group-hover:scale-105">
-                      <img src={album.imageUrl} alt={album.name} className="h-full w-full object-cover" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium truncate group-hover:text-[var(--accent)]">{album.name}</p>
-                      <p className="text-[10px] text-[var(--muted)] truncate">{album.artist}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Albums section removed */}
         </>
       )}
     </div>

@@ -166,13 +166,6 @@ export interface IArtist {
   genres?: string[];
 }
 
-export interface IAlbum {
-  id: string;
-  name: string;
-  artist: string;
-  imageUrl: string;
-}
-
 export async function getTopArtists(token: string, limit = 10): Promise<IArtist[]> {
   const url = `https://api.spotify.com/v1/me/top/artists?limit=${limit}`;
   const data = await spotifyFetch<{ items?: any[] }>(url, token);
@@ -182,25 +175,6 @@ export async function getTopArtists(token: string, limit = 10): Promise<IArtist[
     imageUrl: item.images?.[0]?.url || "/placeholder.png",
     genres: item.genres,
   }));
-}
-
-export async function getRecentlyPlayedAlbums(token: string, limit = 50): Promise<IAlbum[]> {
-  const url = `https://api.spotify.com/v1/me/player/recently-played?limit=${limit}`;
-  const data = await spotifyFetch<{ items?: { track?: SpotifyTrack }[] }>(url, token);
-  
-  const albumsMap = new Map<string, IAlbum>();
-  for (const item of (data.items || [])) {
-    const track = item.track;
-    if (track?.album?.id && !albumsMap.has(track.album.id)) {
-      albumsMap.set(track.album.id, {
-        id: track.album.id,
-        name: track.album.name,
-        artist: track.artists?.[0]?.name || "Artista desconocido",
-        imageUrl: track.album.images?.[0]?.url || "/placeholder.png",
-      });
-    }
-  }
-  return Array.from(albumsMap.values()).slice(0, 10);
 }
 
 export async function getRecommendations(token: string, seedArtists: string[], limit = 10): Promise<ITrack[]> {
@@ -218,25 +192,6 @@ export async function getArtistTopTracks(token: string, artistId: string, market
   const url = `https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=${market}`;
   const data = await spotifyFetch<{ tracks?: SpotifyTrack[] }>(url, token);
   return (data.tracks || []).map(toITrack);
-}
-
-export async function getArtistAlbums(token: string, artistId: string, limit = 20): Promise<IAlbum[]> {
-  const url = `https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single&limit=${limit}`;
-  const data = await spotifyFetch<{ items?: any[] }>(url, token);
-  const seen = new Set<string>();
-  const albums: IAlbum[] = [];
-  for (const item of data.items || []) {
-    const name = (item.name as string).toLowerCase();
-    if (seen.has(name)) continue;
-    seen.add(name);
-    albums.push({
-      id: item.id,
-      name: item.name,
-      artist: item.artists?.[0]?.name || "Artista desconocido",
-      imageUrl: item.images?.[0]?.url || "/placeholder.png",
-    });
-  }
-  return albums;
 }
 
 // --- Block 5: Genres / Categories ---
@@ -297,4 +252,3 @@ export async function getUserPlaylists(token: string, limit = 50): Promise<ISpot
     tracksTotal: p.tracks?.total || 0,
   }));
 }
-

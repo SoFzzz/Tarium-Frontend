@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, Heart, GripVertical, Plus, Upload } from "lucide-react";
+import { Check, ChevronDown, Heart, GripVertical, Plus, Upload, Trash2 } from "lucide-react";
 
 import {
   DndContext,
@@ -34,6 +34,7 @@ type Props = {
   playlists?: Playlist[];
   onReorder?: (newQueue: ITrack[]) => void;
   onPlayTrack: (id: string) => void;
+  onRemoveTrack?: (id: string) => void;
   onToggleFavorite: (track: ITrack | null) => void | Promise<void>;
   onAddTrackToPlaylist?: (playlistId: string, track: ITrack) => Promise<void> | void;
   onTracksParsed: (tracks: LocalTrack[]) => void;
@@ -47,6 +48,7 @@ export function LibraryView({
   playlists,
   onReorder,
   onPlayTrack,
+  onRemoveTrack,
   onToggleFavorite,
   onAddTrackToPlaylist,
   onTracksParsed,
@@ -123,6 +125,7 @@ export function LibraryView({
                       isFav={Boolean(favoritedIds?.has(track.id))}
                       playlists={playlists}
                       onPlayTrack={onPlayTrack}
+                      onRemoveTrack={onRemoveTrack}
                       onToggleFavorite={onToggleFavorite}
                       onAddTrackToPlaylist={onAddTrackToPlaylist}
                     />
@@ -144,6 +147,7 @@ function SortableLibraryRow({
   isFav,
   playlists,
   onPlayTrack,
+  onRemoveTrack,
   onToggleFavorite,
   onAddTrackToPlaylist,
 }: {
@@ -153,6 +157,7 @@ function SortableLibraryRow({
   isFav: boolean;
   playlists?: Playlist[];
   onPlayTrack: (id: string) => void;
+  onRemoveTrack?: (id: string) => void;
   onToggleFavorite: (track: ITrack | null) => void | Promise<void>;
   onAddTrackToPlaylist?: (playlistId: string, track: ITrack) => Promise<void> | void;
 }) {
@@ -227,6 +232,21 @@ function SortableLibraryRow({
           <p className="truncate text-[11px] text-[var(--muted)]">{track.artist}</p>
         </div>
       </button>
+
+      {onRemoveTrack ? (
+        <button
+          type="button"
+          aria-label="Eliminar"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-red-500 hover:text-red-500 sm:h-7 sm:w-7"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRemoveTrack(track.id);
+          }}
+        >
+          <Trash2 size={13} />
+        </button>
+      ) : null}
 
       {authenticated ? (
         <div className="relative" data-playlist-menu-container>

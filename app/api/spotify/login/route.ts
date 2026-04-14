@@ -57,7 +57,6 @@ export async function GET(request: Request) {
     "user-read-playback-state",
     "user-modify-playback-state",
     "user-top-read",
-    "user-read-recently-played",
     "user-library-read",
     "user-library-modify",
     "playlist-read-private",

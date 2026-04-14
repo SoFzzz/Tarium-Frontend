@@ -13,8 +13,8 @@ import {
   Heart,
   LogOut,
   User,
-   Home,
-   Star,
+    Home,
+    Star,
   Search,
   Sun,
   Moon,
@@ -24,7 +24,6 @@ import {
   GripVertical,
   Trash2,
   Music2,
-  Disc3,
   Radio,
   FolderOpen
 } from "lucide-react";
@@ -67,7 +66,6 @@ import { HomeView } from "@/components/HomeView";
 import { NowPlayingView } from "@/components/NowPlayingView";
 import { ArtistsView } from "@/components/ArtistsView";
 import { GenresView } from "@/components/GenresView";
-import { AlbumsView } from "@/components/AlbumsView";
 import { SearchView } from "@/components/SearchView";
 
 const QUEUE_BACKUP_KEY = "tarium_queue_backup";
@@ -159,16 +157,17 @@ export function PlayerShell() {
   const [deletePlaylistId, setDeletePlaylistId] = useState<string | null>(null);
   const [deletePlaylistLoading, setDeletePlaylistLoading] = useState(false);
   
-  const [activeView, setActiveView] = useState<"home" | "library" | "favorites" | "playlists" | "artists" | "albums" | "genres" | "nowplaying" | "search">("home");
+  const [activeView, setActiveView] = useState<"home" | "library" | "favorites" | "playlists" | "artists" | "genres" | "nowplaying" | "search">("home");
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [playlistTracks, setPlaylistTracks] = useState<PlaylistTrack[] | null>(null);
   const [loadingPlaylistTracks, setLoadingPlaylistTracks] = useState(false);
   const [isSeeking, setIsSeeking] = useState(false);
 
   useEffect(() => {
-    const unsub = actions.onTrackPlay(() => setActiveView("nowplaying"));
-    return unsub;
-  }, [actions]);
+    if (state.currentTrack && state.isPlaying) {
+      setActiveView("nowplaying");
+    }
+  }, [state.currentTrack, state.isPlaying]);
   const [seekValue, setSeekValue] = useState<number | null>(null);
   const [displayProgress, setDisplayProgress] = useState(0);
 
@@ -481,7 +480,6 @@ export function PlayerShell() {
 
               {/* Formatos */}
               <SidebarIcon icon={Music2} label="Artistas" active={activeView === "artists"} onClick={() => setActiveView("artists")} />
-              <SidebarIcon icon={Disc3} label="Álbumes" active={activeView === "albums"} onClick={() => setActiveView("albums")} />
               <SidebarIcon icon={Radio} label="Géneros" active={activeView === "genres"} onClick={() => setActiveView("genres")} />
               
               <hr className="my-1 w-8 border-[var(--line)] opacity-50" />
@@ -610,8 +608,6 @@ export function PlayerShell() {
                   <ArtistsView spotifyConnected={spotifySession.status === "connected"} />
                 ) : activeView === "genres" ? (
                   <GenresView spotifyConnected={spotifySession.status === "connected"} />
-                ) : activeView === "albums" ? (
-                  <AlbumsView spotifyConnected={spotifySession.status === "connected"} />
                 ) : activeView === "search" ? (
                   <SearchView />
                 ) : (<> 
@@ -734,6 +730,9 @@ export function PlayerShell() {
                     playlists={playlists}
                     onReorder={(newQueue) => actions.setQueue(newQueue)}
                     onPlayTrack={(id) => void actions.playById(id)}
+                    onRemoveTrack={(id) => {
+                      actions.removeTrack(id);
+                    }}
                     onToggleFavorite={async (track) => {
                       if (!track) return;
 
@@ -896,7 +895,6 @@ export function PlayerShell() {
             <MobileNavIcon icon={Home} label="Inicio" active={activeView === "home"} onClick={() => setActiveView("home")} />
             <MobileNavIcon icon={Search} label="Buscar" active={activeView === "search"} onClick={() => setActiveView("search")} />
             <MobileNavIcon icon={Music2} label="Artistas" active={activeView === "artists"} onClick={() => setActiveView("artists")} />
-            <MobileNavIcon icon={Disc3} label="Álbumes" active={activeView === "albums"} onClick={() => setActiveView("albums")} />
             <MobileNavIcon icon={Radio} label="Géneros" active={activeView === "genres"} onClick={() => setActiveView("genres")} />
             <MobileNavIcon icon={Star} label="Favs" active={activeView === "favorites"} onClick={() => setActiveView("favorites")} />
             <MobileNavIcon icon={ListMusic} label="Listas" active={activeView === "playlists"} onClick={() => setActiveView("playlists")} />

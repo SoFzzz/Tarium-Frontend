@@ -9,12 +9,13 @@ Tarium is a music player web application built with Next.js, React, and TypeScri
 - **Framework**: Next.js 16.2.3 (App Router)
 - **UI Library**: React 19.2.4
 - **Language**: TypeScript 5
-- **Styling**: TailwindCSS 4, CSS Modules
+- **Styling**: TailwindCSS 4
 - **Authentication**: Supabase (Auth UI + Supabase JS) + Spotify OAuth PKCE
 - **Audio**: Howler.js 2.2.4 + Spotify Web Playback SDK
 - **State Management**: React Context + Custom Hooks
 - **Testing**: Vitest + Testing Library
 - **Linting**: ESLint 9
+- **Package Manager**: npm
 
 ### Key Dependencies
 

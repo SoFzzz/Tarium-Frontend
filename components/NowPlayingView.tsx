@@ -18,12 +18,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import { GripVertical, Loader2 } from "lucide-react";
+import { GripVertical, Loader2, Trash2 } from "lucide-react";
 
 import type { ITrack } from "@/lib/player/types";
 import { fetchLyrics } from "@/lib/lyrics";
 import { usePlayer } from "@/providers/PlayerProvider";
-import { useHistory } from "@/hooks/useHistory";
 import { Slider } from "@/components/ui/slider";
 
 const formatDuration = (seconds?: number) => {
@@ -34,11 +33,10 @@ const formatDuration = (seconds?: number) => {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 };
 
-type MobileTab = "current" | "history" | "queue";
+type MobileTab = "current" | "queue";
 
 export function NowPlayingView() {
   const { state, actions } = usePlayer();
-  const { history } = useHistory();
   const [mobileTab, setMobileTab] = useState<MobileTab>("current");
 
   const currentTrack = state.currentTrack;
@@ -121,40 +119,14 @@ export function NowPlayingView() {
     };
   }, [currentTrack?.id, currentTrack?.artist, currentTrack?.title]);
 
-  const historyTracks = useMemo<ITrack[]>(
-    () =>
-      history.slice(0, 20).map((item) => ({
-        id: item.track_id,
-        title: item.title,
-        artist: item.artist,
-        album: item.album,
-        thumbnailUrl: item.thumbnail_url,
-        durationInSeconds: item.duration_seconds,
-      })),
-    [history],
-  );
-
-  const handlePlayFromHistory = (track: ITrack) => {
-    const exists = queue.some((q) => q.id === track.id);
-    if (!exists) {
-      actions.addTrack(track);
-    }
-    void actions.playById(track.id);
-  };
-
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-1 md:hidden">
         <MobileTabButton tab="current" activeTab={mobileTab} onClick={setMobileTab} label="Actual" />
-        <MobileTabButton tab="history" activeTab={mobileTab} onClick={setMobileTab} label="Historial" />
         <MobileTabButton tab="queue" activeTab={mobileTab} onClick={setMobileTab} label="Cola" />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1.35fr_1fr]">
-        <div className={`${mobileTab === "history" ? "block" : "hidden"} md:block`}>
-          <HistoryPanel tracks={historyTracks} onPlay={handlePlayFromHistory} />
-        </div>
-
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[1.35fr_1fr]">
         <div className={`${mobileTab === "current" ? "block" : "hidden"} md:block`}>
           <CurrentTrackPanel
             track={currentTrack}
@@ -181,6 +153,7 @@ export function NowPlayingView() {
             currentTrackId={currentTrackId}
             onPlay={(id) => void actions.playById(id)}
             onReorder={(newOrder) => actions.setQueue(newOrder)}
+            onRemove={(id) => actions.removeTrack(id)}
           />
         </div>
       </div>
@@ -295,45 +268,18 @@ function CurrentTrackPanel({
   );
 }
 
-function HistoryPanel({ tracks, onPlay }: { tracks: ITrack[]; onPlay: (track: ITrack) => void }) {
-  return (
-    <div className="h-full rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">Historial</p>
-      {tracks.length === 0 ? (
-        <p className="mt-4 text-sm text-[var(--muted)]">Aún no has reproducido nada</p>
-      ) : (
-        <ul className="mt-3 max-h-[72vh] space-y-1 overflow-y-auto">
-          {tracks.map((track) => (
-            <li key={track.id}>
-              <button
-                type="button"
-                onClick={() => onPlay(track)}
-                className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-[var(--surface-elevated)]"
-              >
-                <img src={track.thumbnailUrl} alt={track.title} className="h-10 w-10 rounded-lg object-cover" />
-                <div className="min-w-0">
-                  <p className="truncate text-[13px] font-semibold text-[var(--foreground)]">{track.title}</p>
-                  <p className="truncate text-[11px] text-[var(--muted)]">{track.artist}</p>
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 function QueuePanel({
   queue,
   currentTrackId,
   onPlay,
   onReorder,
+  onRemove,
 }: {
   queue: ITrack[];
   currentTrackId: string | null;
   onPlay: (id: string) => void;
   onReorder: (tracks: ITrack[]) => void;
+  onRemove: (id: string) => void;
 }) {
   const [orderedQueue, setOrderedQueue] = useState<ITrack[]>(queue);
   useEffect(() => {
@@ -380,6 +326,7 @@ function QueuePanel({
                     track={track}
                     isCurrent={track.id === currentTrackId}
                     onPlay={onPlay}
+                    onRemove={onRemove}
                   />
                 ))}
               </ul>
@@ -395,10 +342,12 @@ function QueueRow({
   track,
   isCurrent,
   onPlay,
+  onRemove,
 }: {
   track: ITrack;
   isCurrent: boolean;
   onPlay: (id: string) => void;
+  onRemove: (id: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: track.id,
@@ -436,6 +385,19 @@ function QueueRow({
           </p>
           <p className="truncate text-[11px] text-[var(--muted)]">{track.artist}</p>
         </div>
+      </button>
+
+      <button
+        type="button"
+        aria-label="Eliminar"
+        className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-red-500 hover:text-red-500"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onRemove(track.id);
+        }}
+      >
+        <Trash2 size={16} />
       </button>
     </li>
   );

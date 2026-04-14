@@ -123,7 +123,6 @@ export function PlaylistsView({
       const data = await res.json();
       setSpotifyPlaylists(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Error loading Spotify playlists", err);
       setSpotifyPlaylists([]);
       setSpotifyError("No pudimos cargar tus playlists de Spotify. Verifica tu sesión y vuelve a intentar.");
     } finally {
@@ -137,17 +136,26 @@ export function PlaylistsView({
     setSpotifyError(null);
     try {
       const res = await fetch(`/api/spotify/playlists/${sp.id}/tracks`);
-      if (!res.ok) {
-        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error || `HTTP ${res.status}`);
+      const payload = (await res.json().catch(() => null)) as
+        | ITrack[]
+        | { items?: unknown[]; error?: unknown }
+        | null;
+
+      if (payload && !Array.isArray(payload) && payload.error) {
+        throw new Error(`spotify_playlist_tracks_failed:${String(payload.error)}`);
       }
-      const tracks: ITrack[] = await res.json();
+
+      const tracks: ITrack[] = Array.isArray(payload) ? (payload as ITrack[]) : [];
       if (tracks.length > 0) {
         await onImportSpotifyPlaylist(sp.name, tracks);
+      } else {
+        throw new Error("spotify_playlist_tracks_empty");
       }
     } catch (err) {
-      console.error("Error importing playlist", err);
-      setSpotifyError(`No pudimos importar "${sp.name}". Intenta de nuevo.`);
+      // No console noise for expected Spotify failures.
+      setSpotifyError(
+        `No pudimos importar "${sp.name}". Reconecta Spotify y vuelve a intentar.`,
+      );
     } finally {
       setImportingId(null);
     }

@@ -4,13 +4,10 @@ import type {
   PersistenceAdapter,
   PersistedPlaylist,
   PersistedFavorite,
-  PersistedHistoryEntry,
 } from "./types";
 
 const PLAYLISTS_KEY = "tarium.playlists";
 const FAVORITES_KEY = "tarium.favorites";
-const HISTORY_KEY = "tarium_history";
-const LEGACY_HISTORY_KEY = "tarium.history";
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
@@ -48,16 +45,5 @@ export class LocalStorageAdapter implements PersistenceAdapter {
   async saveFavorites(favorites: PersistedFavorite[]): Promise<void> {
     if (!isBrowser()) return;
     window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
-  }
-
-  async getHistory(): Promise<PersistedHistoryEntry[]> {
-    if (!isBrowser()) return [];
-    const raw = window.localStorage.getItem(HISTORY_KEY) ?? window.localStorage.getItem(LEGACY_HISTORY_KEY);
-    return safeParse<PersistedHistoryEntry[]>(raw, []);
-  }
-
-  async saveHistory(history: PersistedHistoryEntry[]): Promise<void> {
-    if (!isBrowser()) return;
-    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
   }
 }

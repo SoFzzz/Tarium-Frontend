@@ -31,18 +31,6 @@ export interface PersistedFavorite {
   created_at: string;
 }
 
-export interface PersistedHistoryEntry {
-  track_id: string;
-  title: string;
-  artist: string;
-  album?: string;
-  thumbnail_url: string;
-  duration_seconds?: number;
-  play_count: number;
-  last_played_at: string;
-  created_at: string;
-}
-
 export interface PersistenceAdapter {
   mode: SyncMode;
 
@@ -51,7 +39,4 @@ export interface PersistenceAdapter {
 
   getFavorites(): Promise<PersistedFavorite[]>;
   saveFavorites(favorites: PersistedFavorite[]): Promise<void>;
-
-  getHistory(): Promise<PersistedHistoryEntry[]>;
-  saveHistory(history: PersistedHistoryEntry[]): Promise<void>;
 }

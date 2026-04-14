@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { type ITrack } from "@/lib/player/types";
-import { type IArtist, type IAlbum } from "@/lib/spotify";
+import { type IArtist } from "@/lib/spotify";
 import { Play } from "lucide-react";
 import { usePlayer } from "@/providers/PlayerProvider";
 
@@ -13,7 +13,6 @@ interface SpotifySessionProp {
 export function HomeView({ session }: { session: SpotifySessionProp }) {
   const { actions } = usePlayer();
   const [topArtists, setTopArtists] = useState<IArtist[]>([]);
-  const [recentAlbums, setRecentAlbums] = useState<IAlbum[]>([]);
   const [recommendations, setRecommendations] = useState<ITrack[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -25,19 +24,14 @@ export function HomeView({ session }: { session: SpotifySessionProp }) {
 
     async function loadData() {
       try {
-        const [artistsRes, albumsRes] = await Promise.all([
+        const [artistsRes] = await Promise.all([
           fetch("/api/spotify/top-artists").then(r => r.json()),
-          fetch("/api/spotify/recently-played").then(r => r.json())
         ]);
         
         let artists: IArtist[] = [];
         if (!artistsRes.error) {
            artists = artistsRes;
            if (isMounted) setTopArtists(artists);
-        }
-        
-        if (!albumsRes.error && isMounted) {
-           setRecentAlbums(albumsRes);
         }
 
         if (artists.length > 0) {
@@ -108,29 +102,8 @@ export function HomeView({ session }: { session: SpotifySessionProp }) {
                </div>
              ))}
            </div>
-        </div>
-      )}
-
-      {session.status === "connected" && !loading && recentAlbums.length > 0 && (
-        <div className="space-y-4">
-           <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--muted)]">
-             Álbumes recientes
-           </p>
-           <div className="flex items-start gap-4 overflow-x-auto pb-4 hide-scrollbar">
-             {recentAlbums.map(album => (
-               <div key={album.id} className="flex min-w-[140px] flex-col gap-2 group cursor-pointer transition-transform hover:scale-105">
-                 <div className="h-32 w-32 overflow-hidden rounded-xl border border-[var(--line)] shadow-sm">
-                   <img src={album.imageUrl} alt={album.name} className="h-full w-full object-cover" />
-                 </div>
-                 <div>
-                   <p className="text-xs font-medium text-[var(--foreground)] group-hover:text-[var(--accent)] truncate">{album.name}</p>
-                   <p className="text-[10px] text-[var(--muted)] truncate">{album.artist}</p>
-                 </div>
-               </div>
-             ))}
-           </div>
-        </div>
-      )}
+         </div>
+       )}
 
       {session.status === "connected" && !loading && recommendations.length > 0 && (
         <div className="space-y-4">
