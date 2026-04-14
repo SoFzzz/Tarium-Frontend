@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { type ITrack } from "@/lib/player/types";
-import { type ISpotifyPlaylist } from "@/lib/spotify";
 import { usePlayer } from "@/providers/PlayerProvider";
-import { ArrowLeft, Play, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 // Hardcoded popular genres (Spotify browse/categories API was deprecated in 2024)
 const GENRES = [
@@ -24,144 +23,68 @@ const GENRES = [
   { id: "lo-fi", name: "Lo-fi", color: "from-teal-500/80 to-cyan-600/80" },
 ];
 
-type ViewState =
-  | { mode: "grid" }
-  | { mode: "playlists"; genre: typeof GENRES[number] };
-
 export function GenresView({ spotifyConnected }: { spotifyConnected?: boolean }) {
   const { actions } = usePlayer();
-  const [viewState, setViewState] = useState<ViewState>({ mode: "grid" });
+  const [loadingGenreId, setLoadingGenreId] = useState<string | null>(null);
 
-  // Playlists state
-  const [playlists, setPlaylists] = useState<ISpotifyPlaylist[]>([]);
-  const [playlistsLoading, setPlaylistsLoading] = useState(false);
-  const [loadingPlaylistId, setLoadingPlaylistId] = useState<string | null>(null);
+  const shuffleTracks = (tracks: ITrack[]): ITrack[] => {
+    const shuffled = [...tracks];
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
 
-  // Load playlists for genre via search
-  useEffect(() => {
-    if (viewState.mode !== "playlists" || !spotifyConnected) return;
-    const genre = viewState.genre;
-    setPlaylistsLoading(true);
-    setPlaylists([]);
-    fetch(`/api/spotify/search?q=${encodeURIComponent(genre.name)}&type=playlist&limit=20`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.playlists?.items) {
-          const items = data.playlists.items.filter(Boolean).map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            imageUrl: p.images?.[0]?.url || "/placeholder.png",
-            description: p.description || "",
-            tracksTotal: p.tracks?.total || 0,
-          }));
-          setPlaylists(items);
-        } else if (Array.isArray(data) && !data.length) {
-          setPlaylists([]);
-        }
-      })
-      .catch(console.error)
-      .finally(() => setPlaylistsLoading(false));
-  }, [viewState, spotifyConnected]);
-
-  const handleListenPlaylist = async (playlist: ISpotifyPlaylist) => {
-    setLoadingPlaylistId(playlist.id);
+  const handleGenreClick = async (genre: (typeof GENRES)[number]) => {
+    setLoadingGenreId(genre.id);
     try {
-      const res = await fetch(`/api/spotify/playlists/${playlist.id}/tracks`);
-      const tracks: ITrack[] = await res.json();
+      const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(genre.name)}`);
+      if (!res.ok) {
+        throw new Error(`Spotify ${res.status}`);
+      }
+      const tracks = (await res.json()) as ITrack[];
       if (tracks.length > 0) {
-        actions.setQueue(tracks);
+        const shuffled = shuffleTracks(tracks);
+        actions.loadQueue(shuffled);
+        await actions.play();
       }
     } catch (err) {
-      console.error("Error loading playlist tracks", err);
+      console.error("Error loading genre tracks", err);
     } finally {
-      setLoadingPlaylistId(null);
+      setLoadingGenreId(null);
     }
   };
 
-  // --- GRID VIEW ---
-  if (viewState.mode === "grid") {
-    return (
-      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-6">
-        <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--muted)]">
-          Explorar géneros
-        </p>
-        {!spotifyConnected ? (
-          <div className="mt-8 text-center text-sm text-[var(--muted)]">
-            Conecta Spotify para explorar géneros musicales.
-          </div>
-        ) : (
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-            {GENRES.map((genre) => (
-              <button
-                key={genre.id}
-                type="button"
-                className={`group relative flex aspect-[4/3] items-end overflow-hidden rounded-xl bg-gradient-to-br ${genre.color} p-3 text-left shadow-sm transition-transform hover:scale-[1.03]`}
-                onClick={() => setViewState({ mode: "playlists", genre })}
-              >
-                <span className="relative z-10 text-sm font-bold text-white drop-shadow-md">
-                  {genre.name}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // --- PLAYLISTS VIEW ---
-  const genre = viewState.genre;
   return (
-    <div className="flex flex-col gap-4">
-      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-6">
-        <button
-          type="button"
-          className="mb-4 flex items-center gap-2 text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-          onClick={() => setViewState({ mode: "grid" })}
-        >
-          <ArrowLeft size={14} /> Volver a géneros
-        </button>
-        <h2 className="font-[family-name:var(--font-cormorant)] text-2xl sm:text-3xl font-semibold">
-          {genre.name}
-        </h2>
-        <p className="text-xs text-[var(--muted)]">Playlists del género</p>
-      </div>
-
-      {playlistsLoading ? (
-        <div className="text-center text-sm text-[var(--muted)] py-10">Cargando playlists…</div>
-      ) : playlists.length === 0 ? (
-        <div className="text-center text-sm text-[var(--muted)] py-10">No se encontraron playlists.</div>
+    <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-6">
+      <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--muted)]">
+        Explorar géneros
+      </p>
+      {!spotifyConnected ? (
+        <div className="mt-8 text-center text-sm text-[var(--muted)]">
+          Conecta Spotify para explorar géneros musicales.
+        </div>
       ) : (
-        <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {playlists.map((pl) => (
-              <div
-                key={pl.id}
-                className="group flex items-center gap-3 rounded-xl p-2 transition-colors hover:bg-[var(--surface-elevated)]"
-              >
-                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-[var(--line)]">
-                  <img src={pl.imageUrl} alt={pl.name} className="h-full w-full object-cover" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="truncate text-xs font-semibold">{pl.name}</p>
-                  <p className="truncate text-[10px] text-[var(--muted)]">{pl.tracksTotal} tracks</p>
-                </div>
-                <button
-                  type="button"
-                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[var(--accent)] px-3 text-[11px] font-bold text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
-                  onClick={() => void handleListenPlaylist(pl)}
-                  disabled={loadingPlaylistId === pl.id}
-                >
-                  {loadingPlaylistId === pl.id ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <Play size={14} className="ml-0.5" />
-                  )}
-                  Escuchar
-                </button>
-              </div>
-            ))}
-          </div>
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {GENRES.map((genre) => (
+            <button
+              key={genre.id}
+              type="button"
+              className={`group relative flex aspect-[4/3] items-end overflow-hidden rounded-xl bg-gradient-to-br ${genre.color} p-3 text-left shadow-sm transition-transform hover:scale-[1.03] disabled:opacity-60`}
+              onClick={() => void handleGenreClick(genre)}
+              disabled={Boolean(loadingGenreId)}
+            >
+              <span className="relative z-10 text-sm font-bold text-white drop-shadow-md">
+                {genre.name}
+              </span>
+              {loadingGenreId === genre.id ? (
+                <span className="absolute right-2 top-2">
+                  <Loader2 size={14} className="animate-spin text-white" />
+                </span>
+              ) : null}
+            </button>
+          ))}
         </div>
       )}
     </div>
