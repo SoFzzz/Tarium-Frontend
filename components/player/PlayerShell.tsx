@@ -64,6 +64,7 @@ import { AuthModalControlled } from "@/components/auth/AuthModal";
 import { useSpotifySession } from "@/hooks/useSpotifySession";
 import { HomeView } from "@/components/HomeView";
 import { NowPlayingView } from "@/components/NowPlayingView";
+import { ArtistsView } from "@/components/ArtistsView";
 
 const formatDuration = (seconds?: number) => {
   if (seconds === undefined) {
@@ -571,6 +572,8 @@ export function PlayerShell() {
                   <NowPlayingView />
                 ) : activeView === "home" ? (
                   <HomeView session={spotifySession} />
+                ) : activeView === "artists" ? (
+                  <ArtistsView />
                 ) : (<> 
                 {/* Vista principal / biblioteca según activeView */}
                 <div className="flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
