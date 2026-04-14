@@ -272,12 +272,6 @@ function CurrentTrackPanel({
           onValueCommit={([val]) => onSeekCommit(val)}
           className="mb-2 w-full"
         />
-        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--line)]">
-          <div
-            className="h-full rounded-full bg-[var(--accent)] transition-all"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
         <div className="mt-1 flex justify-between text-xs text-[var(--muted)]">
           <span>{formatDuration(progress)}</span>
           <span>{formatDuration(duration)}</span>
