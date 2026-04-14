@@ -58,6 +58,7 @@ import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTheme } from "next-themes";
 import { AuthModalControlled } from "@/components/auth/AuthModal";
+import { useSpotifySession } from "@/hooks/useSpotifySession";
 
 const formatDuration = (seconds?: number) => {
   if (seconds === undefined) {
@@ -74,6 +75,7 @@ const formatDuration = (seconds?: number) => {
 export function PlayerShell() {
   const { state, actions } = usePlayer();
   const { user, signOut } = useAuth();
+  const spotifySession = useSpotifySession();
   const { playlists, createPlaylist, getPlaylistTracks, addTrackToPlaylist, removeTrackFromPlaylist, deletePlaylist } = usePlaylists();
   const { favorites, addFavorite, removeFavorite, isFavorite } = useFavorites();
 
@@ -429,6 +431,35 @@ export function PlayerShell() {
               <div className="hidden w-full max-w-xl sm:block">
                 <SearchPanel />
               </div>
+
+              <div className="hidden items-center gap-2 sm:flex">
+                {spotifySession.status === "connected" ? (
+                  <div className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface-elevated)] px-3 py-2 text-xs text-[var(--muted)]">
+                    {spotifySession.me.avatarUrl ? (
+                      <img
+                        src={spotifySession.me.avatarUrl}
+                        alt={spotifySession.me.displayName ?? "Spotify"}
+                        className="h-5 w-5 rounded-full object-cover"
+                      />
+                    ) : null}
+                    <span className="max-w-[10rem] truncate">
+                      {spotifySession.me.displayName ?? "Spotify conectado"}
+                    </span>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={spotifySession.status === "loading"}
+                    onClick={() => {
+                      window.location.href = "/api/spotify/login";
+                    }}
+                  >
+                    {spotifySession.status === "loading" ? "Spotify..." : "Conectar con Spotify"}
+                  </Button>
+                )}
+              </div>
+
               <ThemeToggleButton />
               {user ? (
                 <button

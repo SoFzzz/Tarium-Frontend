@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { searchTracks } from "@/lib/spotify";
+import { refreshAccessTokenWithExpiresIn } from "@/lib/spotify";
 
 export const runtime = "nodejs";
 
 const ACCESS_TOKEN_COOKIE = "spotify_access_token";
+const REFRESH_TOKEN_COOKIE = "spotify_refresh_token";
+const EXPIRES_AT_COOKIE = "spotify_expires_at";
 
 function getCookie(request: Request, name: string): string | null {
   const cookieHeader = request.headers.get("cookie") ?? "";
@@ -28,7 +31,21 @@ export async function GET(request: Request) {
     return NextResponse.json([]);
   }
 
-  const token = getCookie(request, ACCESS_TOKEN_COOKIE);
+  let token = getCookie(request, ACCESS_TOKEN_COOKIE);
+  const refreshToken = getCookie(request, REFRESH_TOKEN_COOKIE);
+  const expiresAt = getCookie(request, EXPIRES_AT_COOKIE);
+
+  let refreshed: { accessToken: string; expiresIn: number } | null = null;
+
+  if (token && refreshToken && expiresAt) {
+    const expiresAtSeconds = Number(expiresAt);
+    const now = Math.floor(Date.now() / 1000);
+    if (Number.isFinite(expiresAtSeconds) && expiresAtSeconds - now <= 60) {
+      refreshed = await refreshAccessTokenWithExpiresIn(refreshToken);
+      token = refreshed.accessToken;
+    }
+  }
+
   if (!token) {
     // Keep response shape consistent for the UI.
     return NextResponse.json(
@@ -39,7 +56,28 @@ export async function GET(request: Request) {
 
   try {
     const tracks = await searchTracks(query, token);
-    return NextResponse.json(tracks);
+    const response = NextResponse.json(tracks);
+
+    if (refreshed) {
+      const isProd = process.env.NODE_ENV === "production";
+      const expiresAtSeconds = Math.floor(Date.now() / 1000) + refreshed.expiresIn;
+      response.cookies.set(ACCESS_TOKEN_COOKIE, refreshed.accessToken, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: "lax",
+        path: "/",
+        maxAge: refreshed.expiresIn,
+      });
+      response.cookies.set(EXPIRES_AT_COOKIE, String(expiresAtSeconds), {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 30 * 24 * 60 * 60,
+      });
+    }
+
+    return response;
   } catch (err) {
     console.error("Spotify search failed", err);
     return NextResponse.json(

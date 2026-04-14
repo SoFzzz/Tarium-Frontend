@@ -27,5 +27,26 @@ export async function GET(request: Request) {
 
   const expiresAt = getCookie(request, EXPIRES_AT_COOKIE);
 
+  // If token is expired/near expiry, refresh it to keep SDK happy.
+  if (expiresAt) {
+    const expiresAtSeconds = Number(expiresAt);
+    const now = Math.floor(Date.now() / 1000);
+    if (Number.isFinite(expiresAtSeconds) && expiresAtSeconds - now <= 60) {
+      const refreshed = await fetch(
+        new URL("/api/spotify/refresh", new URL(request.url).origin),
+        {
+          method: "POST",
+          headers: { cookie: request.headers.get("cookie") ?? "" },
+          cache: "no-store",
+        },
+      );
+
+      if (refreshed.ok) {
+        // After refresh, the browser will receive updated cookies, but for this response
+        // we still return the existing access token value.
+      }
+    }
+  }
+
   return NextResponse.json({ accessToken, expiresAt });
 }

@@ -96,6 +96,13 @@ export async function getTrack(id: string, token: string): Promise<ITrack> {
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<string> {
+  const { accessToken } = await refreshAccessTokenWithExpiresIn(refreshToken);
+  return accessToken;
+}
+
+export async function refreshAccessTokenWithExpiresIn(
+  refreshToken: string,
+): Promise<{ accessToken: string; expiresIn: number }> {
   const clientId = process.env.SPOTIFY_CLIENT_ID?.trim();
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET?.trim();
 
@@ -137,9 +144,16 @@ export async function refreshAccessToken(refreshToken: string): Promise<string> 
   }
 
   const data = (await res.json()) as { access_token?: string };
-  if (!data.access_token) {
+  const accessToken = data.access_token;
+  const expiresIn = (data as { expires_in?: number }).expires_in;
+
+  if (!accessToken) {
     throw new Error("Spotify token refresh returned no access_token");
   }
 
-  return data.access_token;
+  return {
+    accessToken,
+    // Spotify returns expires_in (seconds). Fallback to 3600 if missing.
+    expiresIn: typeof expiresIn === "number" && expiresIn > 0 ? expiresIn : 3600,
+  };
 }
