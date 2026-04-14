@@ -11,9 +11,12 @@ export async function GET() {
       return NextResponse.json({ error: "no_token" }, { status: 401 });
     }
 
-    const res = await fetch(`https://api.spotify.com/v1/browse/new-releases?limit=30`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    // /v1/browse/new-releases was removed by Spotify (Nov 2024).
+    // Use search with year filter as replacement.
+    const res = await fetch(
+      "https://api.spotify.com/v1/search?q=year:2025&type=album&limit=30&market=ES",
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
     if (!res.ok) throw new Error(`Spotify ${res.status}`);
     const data = await res.json();
 
@@ -30,6 +33,6 @@ export async function GET() {
     return response;
   } catch (err) {
     console.error("[new-releases]", err);
-    return NextResponse.json({ error: "internal" }, { status: 500 });
+    return NextResponse.json([], { status: 200 });
   }
 }
