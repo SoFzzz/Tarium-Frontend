@@ -1,6 +1,8 @@
 "use client";
 
-import { GripVertical, Heart, Play, Trash2 } from "lucide-react";
+import { GripVertical, Heart, Play, Trash2, Download, Loader2 } from "lucide-react";
+import type { ISpotifyPlaylist } from "@/lib/spotify";
+import type { ITrack } from "@/lib/player/types";
 
 import {
   DndContext,
@@ -42,6 +44,9 @@ type Props = {
   canAddCurrentTrack?: boolean;
   onToggleFavorite: (track: PlaylistTrack) => void | Promise<void>;
   onReorderTracks: (playlistId: string, newTracks: PlaylistTrack[]) => void | Promise<void>;
+  // Block 6: Spotify import
+  spotifyConnected?: boolean;
+  onImportSpotifyPlaylist?: (name: string, tracks: ITrack[]) => void | Promise<void>;
 };
 
 export function PlaylistsView({
@@ -61,6 +66,8 @@ export function PlaylistsView({
   canAddCurrentTrack,
   onToggleFavorite,
   onReorderTracks,
+  spotifyConnected,
+  onImportSpotifyPlaylist,
 }: Props) {
   const isAuthed = Boolean(authenticated);
   const [orderedTracks, setOrderedTracks] = useState<PlaylistTrack[]>(playlistTracks ?? []);
@@ -96,7 +103,46 @@ export function PlaylistsView({
     Promise.resolve().then(() => void onReorderTracks(selectedPlaylistId, next));
   };
 
+  // Spotify import state
+  const [spotifyPlaylists, setSpotifyPlaylists] = useState<ISpotifyPlaylist[]>([]);
+  const [loadingSpotify, setLoadingSpotify] = useState(false);
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [showSpotifySection, setShowSpotifySection] = useState(false);
+
+  const handleLoadSpotifyPlaylists = async () => {
+    setLoadingSpotify(true);
+    try {
+      const res = await fetch("/api/spotify/me/playlists");
+      const data = await res.json();
+      if (!data.error) {
+        setSpotifyPlaylists(data);
+        setShowSpotifySection(true);
+      }
+    } catch (err) {
+      console.error("Error loading Spotify playlists", err);
+    } finally {
+      setLoadingSpotify(false);
+    }
+  };
+
+  const handleImportPlaylist = async (sp: ISpotifyPlaylist) => {
+    if (!onImportSpotifyPlaylist) return;
+    setImportingId(sp.id);
+    try {
+      const res = await fetch(`/api/spotify/playlists/${sp.id}/tracks`);
+      const tracks: ITrack[] = await res.json();
+      if (tracks.length > 0) {
+        await onImportSpotifyPlaylist(sp.name, tracks);
+      }
+    } catch (err) {
+      console.error("Error importing playlist", err);
+    } finally {
+      setImportingId(null);
+    }
+  };
+
   return (
+    <div className="flex flex-col gap-4">
     <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
@@ -214,6 +260,66 @@ export function PlaylistsView({
           )}
         </div>
       </div>
+    </div>
+
+    {/* Spotify import section */}
+    {spotifyConnected && onImportSpotifyPlaylist && (
+      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
+            Importar de Spotify
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleLoadSpotifyPlaylists}
+            disabled={loadingSpotify}
+          >
+            {loadingSpotify ? (
+              <><Loader2 size={14} className="animate-spin mr-1" /> Cargando…</>
+            ) : (
+              <><Download size={14} className="mr-1" /> Cargar mis playlists</>
+            )}
+          </Button>
+        </div>
+
+        {showSpotifySection && spotifyPlaylists.length === 0 && !loadingSpotify && (
+          <p className="text-xs text-[var(--muted)]">No se encontraron playlists en tu cuenta de Spotify.</p>
+        )}
+
+        {showSpotifySection && spotifyPlaylists.length > 0 && (
+          <ul className="space-y-1 text-xs max-h-64 overflow-y-auto">
+            {spotifyPlaylists.map((sp) => (
+              <li
+                key={sp.id}
+                className="group flex items-center gap-3 rounded-xl p-2 hover:bg-[var(--surface-elevated)] transition-colors"
+              >
+                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-[var(--line)]">
+                  <img src={sp.imageUrl} alt={sp.name} className="h-full w-full object-cover" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="truncate text-[13px] font-semibold">{sp.name}</p>
+                  <p className="truncate text-[11px] text-[var(--muted)]">{sp.tracksTotal} tracks</p>
+                </div>
+                <button
+                  type="button"
+                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-[var(--accent)] px-3 text-[11px] font-bold text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
+                  onClick={() => void handleImportPlaylist(sp)}
+                  disabled={importingId === sp.id}
+                >
+                  {importingId === sp.id ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Download size={14} />
+                  )}
+                  Importar
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    )}
     </div>
   );
 }
