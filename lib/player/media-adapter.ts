@@ -11,4 +11,7 @@ export interface MediaAdapter {
 
   /** Notifica actualizaciones de tiempo de reproducción y duración en segundos. */
   onTimeUpdate?(handler: (positionSeconds: number, durationSeconds: number) => void): void;
+
+  /** Detiene y limpia el adapter para liberar recursos al cambiar de fuente. */
+  destroy?(): void | Promise<void>;
 }
