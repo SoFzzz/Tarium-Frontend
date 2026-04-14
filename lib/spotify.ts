@@ -238,3 +238,51 @@ export async function getArtistAlbums(token: string, artistId: string, limit = 2
   }
   return albums;
 }
+
+// --- Block 5: Genres / Categories ---
+
+export interface ICategory {
+  id: string;
+  name: string;
+  imageUrl: string;
+}
+
+export interface ISpotifyPlaylist {
+  id: string;
+  name: string;
+  imageUrl: string;
+  description: string;
+  tracksTotal: number;
+}
+
+export async function getCategories(token: string, limit = 30, locale = "es_ES"): Promise<ICategory[]> {
+  const url = `https://api.spotify.com/v1/browse/categories?limit=${limit}&locale=${locale}`;
+  const data = await spotifyFetch<{ categories?: { items?: any[] } }>(url, token);
+  return (data.categories?.items || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    imageUrl: c.icons?.[0]?.url || "/placeholder.png",
+  }));
+}
+
+export async function getCategoryPlaylists(token: string, categoryId: string, limit = 20): Promise<ISpotifyPlaylist[]> {
+  const url = `https://api.spotify.com/v1/browse/categories/${categoryId}/playlists?limit=${limit}`;
+  const data = await spotifyFetch<{ playlists?: { items?: any[] } }>(url, token);
+  return (data.playlists?.items || []).filter(Boolean).map((p) => ({
+    id: p.id,
+    name: p.name,
+    imageUrl: p.images?.[0]?.url || "/placeholder.png",
+    description: p.description || "",
+    tracksTotal: p.tracks?.total || 0,
+  }));
+}
+
+export async function getPlaylistTracks(token: string, playlistId: string, limit = 50): Promise<ITrack[]> {
+  const url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=${limit}`;
+  const data = await spotifyFetch<{ items?: { track?: SpotifyTrack }[] }>(url, token);
+  return (data.items || [])
+    .map((i) => i.track)
+    .filter((t): t is SpotifyTrack => !!t && !!t.id)
+    .map(toITrack);
+}
+
