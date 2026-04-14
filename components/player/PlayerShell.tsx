@@ -70,6 +70,8 @@ import { GenresView } from "@/components/GenresView";
 import { AlbumsView } from "@/components/AlbumsView";
 import { SearchView } from "@/components/SearchView";
 
+const QUEUE_BACKUP_KEY = "tarium_queue_backup";
+
 const formatDuration = (seconds?: number) => {
   if (seconds === undefined) {
     return "--:--";
@@ -182,6 +184,27 @@ export function PlayerShell() {
       setAuthModalOpen(false);
     }
   }, [user]);
+
+  useEffect(() => {
+    try {
+      const backup = sessionStorage.getItem(QUEUE_BACKUP_KEY);
+      if (!backup) return;
+
+      const currentQueue = actions.getState().queue;
+      if (currentQueue.length > 0) {
+        sessionStorage.removeItem(QUEUE_BACKUP_KEY);
+        return;
+      }
+
+      const restored = JSON.parse(backup) as ITrack[];
+      if (Array.isArray(restored) && restored.length > 0) {
+        actions.loadQueue(restored);
+      }
+      sessionStorage.removeItem(QUEUE_BACKUP_KEY);
+    } catch {
+      sessionStorage.removeItem(QUEUE_BACKUP_KEY);
+    }
+  }, [actions]);
 
   // Si cambia el track actual, reseteamos cualquier estado de seek manual
   useEffect(() => {
@@ -422,6 +445,18 @@ export function PlayerShell() {
     }
   };
 
+  const handleSpotifyLogin = () => {
+    try {
+      const currentQueue = actions.getState().queue;
+      if (currentQueue.length > 0) {
+        sessionStorage.setItem(QUEUE_BACKUP_KEY, JSON.stringify(currentQueue));
+      }
+    } catch (err) {
+      console.warn("No se pudo respaldar la cola antes del login Spotify", err);
+    }
+    window.location.href = "/api/spotify/login";
+  };
+
   return (
     <TooltipProvider>
       <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -522,9 +557,7 @@ export function PlayerShell() {
                     size="sm"
                     variant="outline"
                     disabled={spotifySession.status === "loading"}
-                    onClick={() => {
-                      window.location.href = "/api/spotify/login";
-                    }}
+                    onClick={handleSpotifyLogin}
                   >
                     {spotifySession.status === "loading" ? "Spotify..." : "Conectar con Spotify"}
                   </Button>
