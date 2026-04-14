@@ -737,6 +737,7 @@ export function PlayerShell() {
                         setPlaylistTracks(updated);
                       }
                     }}
+                    onTracksParsed={handleLocalDropzoneTracksParsed}
                   />
                 )}
                 {activeView === "favorites" && (
