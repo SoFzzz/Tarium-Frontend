@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, Heart, GripVertical, Plus } from "lucide-react";
+import { Check, ChevronDown, Heart, GripVertical, Plus, Upload } from "lucide-react";
 
 import {
   DndContext,
@@ -21,9 +21,10 @@ import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 import React, { useEffect, useMemo, useState } from "react";
 
-import type { ITrack } from "@/lib/player/types";
+import type { ITrack, LocalTrack } from "@/lib/player/types";
 import type { Playlist } from "@/hooks/usePlaylists";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { LocalLibraryDropzone } from "@/components/LocalLibraryDropzone";
 
 type Props = {
   queue: ITrack[];
@@ -35,6 +36,7 @@ type Props = {
   onPlayTrack: (id: string) => void;
   onToggleFavorite: (track: ITrack | null) => void | Promise<void>;
   onAddTrackToPlaylist?: (playlistId: string, track: ITrack) => Promise<void> | void;
+  onTracksParsed: (tracks: LocalTrack[]) => void;
 };
 
 export function LibraryView({
@@ -47,84 +49,89 @@ export function LibraryView({
   onPlayTrack,
   onToggleFavorite,
   onAddTrackToPlaylist,
+  onTracksParsed,
 }: Props) {
   const [orderedQueue, setOrderedQueue] = useState<ITrack[]>(queue);
 
-  // Mantener la lista en sync si cambia la cola externamente (p.ej. se agregan tracks).
   useEffect(() => {
     setOrderedQueue(queue);
   }, [queue]);
 
   const ids = useMemo(() => orderedQueue.map((t) => t.id), [orderedQueue]);
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      // Evita iniciar drag por taps/clicks accidentales.
-      activationConstraint: { distance: 6 },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 120, tolerance: 8 },
-    }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 8 } }),
   );
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over) return;
     if (active.id === over.id) return;
-
     const oldIndex = orderedQueue.findIndex((t) => t.id === active.id);
     const newIndex = orderedQueue.findIndex((t) => t.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
-
     const next = arrayMove(orderedQueue, oldIndex, newIndex);
     setOrderedQueue(next);
-
-    // Defiere el side-effect para evitar updates sincronos de otro componente
-    // durante el commit/render de DnD en React.
     if (onReorder) {
       Promise.resolve().then(() => onReorder(next));
     }
   };
 
-  if (!queue.length) {
-    return (
-      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 text-sm text-[var(--muted)]">
-        Todavía no has cargado archivos. Usa la vista Inicio para añadir tu biblioteca local.
-      </div>
-    );
-  }
-
   return (
-    <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
-          Biblioteca local ({queue.length})
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.5fr]">
+      {/* Left: Dropzone */}
+      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5 flex flex-col gap-3">
+        <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--muted)]">
+          Importar archivos
         </p>
+        <div className="flex-1 flex flex-col items-center justify-center min-h-[200px]">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed border-[var(--line)] text-[var(--muted)]">
+            <Upload size={28} />
+          </div>
+          <LocalLibraryDropzone onTracksParsed={onTracksParsed} />
+        </div>
       </div>
-      <div className="max-h-[60vh] overflow-y-auto pr-1 sm:max-h-80">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          modifiers={[restrictToVerticalAxis, restrictToParentElement]}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-            <ul className="space-y-1 text-xs">
-              {orderedQueue.map((track) => (
-                <SortableLibraryRow
-                  key={track.id}
-                  track={track}
-                  currentTrackId={currentTrackId}
-                  authenticated={authenticated}
-                  isFav={Boolean(favoritedIds?.has(track.id))}
-                  playlists={playlists}
-                  onPlayTrack={onPlayTrack}
-                  onToggleFavorite={onToggleFavorite}
-                  onAddTrackToPlaylist={onAddTrackToPlaylist}
-                />
-              ))}
-            </ul>
-          </SortableContext>
-        </DndContext>
+
+      {/* Right: Track list */}
+      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5 flex flex-col max-h-[85vh]">
+        <div className="mb-3 flex items-center justify-between shrink-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--muted)]">
+            Biblioteca local ({queue.length})
+          </p>
+        </div>
+
+        {queue.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center text-sm text-[var(--muted)] px-4 py-6">
+            Todavía no has cargado archivos. Arrastra tus archivos de audio en el panel de la izquierda.
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto pr-1">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+                <ul className="space-y-1 text-xs">
+                  {orderedQueue.map((track) => (
+                    <SortableLibraryRow
+                      key={track.id}
+                      track={track}
+                      currentTrackId={currentTrackId}
+                      authenticated={authenticated}
+                      isFav={Boolean(favoritedIds?.has(track.id))}
+                      playlists={playlists}
+                      onPlayTrack={onPlayTrack}
+                      onToggleFavorite={onToggleFavorite}
+                      onAddTrackToPlaylist={onAddTrackToPlaylist}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -160,18 +167,14 @@ function SortableLibraryRow({
   useEffect(() => {
     if (!playlistMenuOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setPlaylistMenuOpen(false);
-      }
+      if (event.key === "Escape") setPlaylistMenuOpen(false);
     };
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
-      // Si el click fue fuera del menu, cerramos.
       const el = target.closest("[data-playlist-menu-container]");
       if (!el) setPlaylistMenuOpen(false);
     };
-
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("mousedown", onPointerDown);
     return () => {
@@ -225,7 +228,6 @@ function SortableLibraryRow({
         </div>
       </button>
 
-      {/* Agregar a playlist (requiere login) */}
       {authenticated ? (
         <div className="relative" data-playlist-menu-container>
           <button
@@ -269,7 +271,6 @@ function SortableLibraryRow({
                       e.preventDefault();
                       e.stopPropagation();
                       if (!onAddTrackToPlaylist) return;
-
                       try {
                         setAddingToPlaylist(true);
                         await onAddTrackToPlaylist(p.id, track);
