@@ -185,7 +185,7 @@ export async function getTopArtists(token: string, limit = 10): Promise<IArtist[
 }
 
 export async function getRecentlyPlayedAlbums(token: string, limit = 50): Promise<IAlbum[]> {
-  const url = `https://api.spotify.com/v1/me/recently-played?limit=${limit}`;
+  const url = `https://api.spotify.com/v1/me/player/recently-played?limit=${limit}`;
   const data = await spotifyFetch<{ items?: { track?: SpotifyTrack }[] }>(url, token);
   
   const albumsMap = new Map<string, IAlbum>();
