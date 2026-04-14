@@ -51,7 +51,7 @@ export function SearchView() {
   };
 
   return (
-    <div className="flex max-h-[85vh] flex-col rounded-2xl border border-[var(--line)] bg-[var(--surface)]">
+    <div className="flex max-h-[85vh] flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)]">
       {/* Search bar — sticky top */}
       <div className="shrink-0 border-b border-[var(--line)] p-4 sm:p-6">
         <form onSubmit={handleSearch} className="flex items-center gap-3">
