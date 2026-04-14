@@ -11,6 +11,7 @@ type SpotifyArtist = {
 };
 
 type SpotifyAlbum = {
+  id: string;
   name: string;
   images?: SpotifyImage[];
 };
@@ -156,4 +157,59 @@ export async function refreshAccessTokenWithExpiresIn(
     // Spotify returns expires_in (seconds). Fallback to 3600 if missing.
     expiresIn: typeof expiresIn === "number" && expiresIn > 0 ? expiresIn : 3600,
   };
+}
+
+export interface IArtist {
+  id: string;
+  name: string;
+  imageUrl: string;
+  genres?: string[];
+}
+
+export interface IAlbum {
+  id: string;
+  name: string;
+  artist: string;
+  imageUrl: string;
+}
+
+export async function getTopArtists(token: string, limit = 10): Promise<IArtist[]> {
+  const url = `https://api.spotify.com/v1/me/top/artists?limit=${limit}`;
+  const data = await spotifyFetch<{ items?: any[] }>(url, token);
+  return (data.items || []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    imageUrl: item.images?.[0]?.url || "/placeholder.png",
+    genres: item.genres,
+  }));
+}
+
+export async function getRecentlyPlayedAlbums(token: string, limit = 50): Promise<IAlbum[]> {
+  const url = `https://api.spotify.com/v1/me/recently-played?limit=${limit}`;
+  const data = await spotifyFetch<{ items?: { track?: SpotifyTrack }[] }>(url, token);
+  
+  const albumsMap = new Map<string, IAlbum>();
+  for (const item of (data.items || [])) {
+    const track = item.track;
+    if (track?.album?.id && !albumsMap.has(track.album.id)) {
+      albumsMap.set(track.album.id, {
+        id: track.album.id,
+        name: track.album.name,
+        artist: track.artists?.[0]?.name || "Artista desconocido",
+        imageUrl: track.album.images?.[0]?.url || "/placeholder.png",
+      });
+    }
+  }
+  return Array.from(albumsMap.values()).slice(0, 10);
+}
+
+export async function getRecommendations(token: string, seedArtists: string[], limit = 10): Promise<ITrack[]> {
+  const url = new URL("https://api.spotify.com/v1/recommendations");
+  url.searchParams.set("limit", limit.toString());
+  if (seedArtists.length > 0) {
+    url.searchParams.set("seed_artists", seedArtists.slice(0, 5).join(","));
+  }
+
+  const data = await spotifyFetch<{ tracks?: SpotifyTrack[] }>(url.toString(), token);
+  return (data.tracks || []).map(toITrack);
 }

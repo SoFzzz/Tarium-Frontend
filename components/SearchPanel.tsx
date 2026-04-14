@@ -6,7 +6,12 @@ import type { ITrack } from "@/lib/player/types";
 import { SearchResultList } from "./SearchResultList";
 import { Button } from "@/components/ui/button";
 
-export function SearchPanel() {
+export interface SearchPanelProps {
+  className?: string;
+  placeholder?: string;
+}
+
+export function SearchPanel({ className = "", placeholder = "Buscar con Spotify" }: SearchPanelProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ITrack[]>([]);
   const [loading, setLoading] = useState(false);
@@ -54,10 +59,10 @@ export function SearchPanel() {
   }
 
   return (
-    <section ref={containerRef} className="relative w-full space-y-3">
+    <section ref={containerRef} className={`relative w-full space-y-3 ${className}`}>
       <form onSubmit={handleSearch} className="flex items-center gap-2">
         <input
-          placeholder="Buscar con Spotify"
+          placeholder={placeholder}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);

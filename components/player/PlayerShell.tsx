@@ -59,6 +59,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useTheme } from "next-themes";
 import { AuthModalControlled } from "@/components/auth/AuthModal";
 import { useSpotifySession } from "@/hooks/useSpotifySession";
+import { HomeView } from "@/components/HomeView";
 
 const formatDuration = (seconds?: number) => {
   if (seconds === undefined) {
@@ -429,7 +430,7 @@ export function PlayerShell() {
 
             <div className="flex items-center gap-4">
               <div className="hidden w-full max-w-xl sm:block">
-                <SearchPanel />
+                {activeView !== "home" && <SearchPanel />}
               </div>
 
               <div className="hidden items-center gap-2 sm:flex">
@@ -489,138 +490,18 @@ export function PlayerShell() {
 
           {/* Área principal */}
           <div className="flex flex-1 flex-col gap-4 bg-[var(--background)] px-4 pt-4 pb-32 sm:px-6 sm:pb-24">
+            {activeView !== "home" && (
             <div className="sm:hidden">
               <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-3">
                 <SearchPanel />
               </div>
             </div>
+            )}
             <div className="grid gap-4 grid-cols-1">
               {/* Columna unica: vistas dinámicas */}
               <div className="flex flex-col gap-4">
                 {activeView === "home" ? (
-                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                    <div className="flex flex-col gap-4">
-                      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
-                          Reproduciendo ahora
-                        </p>
-                        <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-center">
-                          <div className="mx-auto hidden h-56 w-56 overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--surface-elevated)] sm:block lg:mx-0 lg:h-64 lg:w-64">
-                            {currentTrack ? (
-                              <img
-                                src={currentTrack.thumbnailUrl}
-                                alt={currentTrack.title}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-sm text-[var(--muted)]">
-                                Sin artwork
-                              </div>
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="mx-auto mb-4 block h-32 w-32 overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface-elevated)] sm:hidden">
-                              {currentTrack ? (
-                                <img
-                                  src={currentTrack.thumbnailUrl}
-                                  alt={currentTrack.title}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center text-sm text-[var(--muted)]">
-                                  Sin artwork
-                                </div>
-                              )}
-                            </div>
-                            <h2 className="font-[family-name:var(--font-cormorant)] text-4xl sm:text-5xl">
-                              {currentTrack ? currentTrack.title : "Ningun track seleccionado"}
-                            </h2>
-                            <p className="mt-2 truncate text-sm text-[var(--muted)] sm:text-base">
-                              {currentTrack ? currentTrack.artist : "Carga archivos o anade pistas a la cola"}
-                            </p>
-                            <div className="mt-6 flex items-center justify-between text-xs text-[var(--muted)]">
-                              <div className="flex items-center gap-2">
-                                <Clock3 size={14} />
-                                <span>
-                                  {formatDuration(
-                                    isSeeking ? (seekValue ?? displayProgress) : displayProgress,
-                                  )}{" "}
-                                  / {formatDuration(state.durationSeconds)}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <ListMusic size={14} />
-                                <span>{queue.length} en cola</span>
-                              </div>
-                            </div>
-                            <Slider
-                              value={
-                                state.durationSeconds > 0
-                                  ? [isSeeking ? (seekValue ?? displayProgress) : displayProgress]
-                                  : [0]
-                              }
-                              max={state.durationSeconds || 0}
-                              step={1}
-                              disabled={state.durationSeconds <= 0}
-                              onValueChange={([val]) => {
-                                setIsSeeking(true);
-                                setSeekValue(val);
-                              }}
-                              onValueCommit={([val]) => {
-                                setIsSeeking(false);
-                                setSeekValue(val);
-                                setDisplayProgress(val);
-                                actions.seek(val);
-                              }}
-                              className="mt-3 w-full"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
-                        <div className="mb-3 flex items-center justify-between gap-2">
-                          <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
-                              Biblioteca local
-                            </p>
-                            <p className="text-xs text-[var(--muted)]">
-                              Arrastra archivos o usa el boton para cargarlos
-                            </p>
-                          </div>
-                        </div>
-                        <LocalLibraryDropzone onTracksParsed={handleLocalDropzoneTracksParsed} />
-                      </div>
-                    </div>
-                    <HomeQueuePanel
-                      queue={queue}
-                      currentTrackId={currentTrackId}
-                      authenticated={Boolean(user)}
-                      isFavorite={isFavorite}
-                      onPlayTrack={(id) => void actions.playById(id)}
-                      onReorder={(newQueue) => actions.setQueue(newQueue)}
-                      onRemoveTrack={(id) => {
-                        actions.removeTrack(id);
-                      }}
-                      onToggleFavorite={async (track) => {
-                        if (!user) {
-                          setAuthModalOpen(true);
-                          return;
-                        }
-
-                        if (isFavorite(track.id)) {
-                          await removeFavorite(track.id);
-                          return;
-                        }
-
-                        await addFavorite({
-                          track_id: track.id,
-                          title: track.title,
-                          artist: track.artist,
-                          thumbnail_url: track.thumbnailUrl,
-                        });
-                      }}
-                    />
-                  </div>
+                  <HomeView session={spotifySession} />
                 ) : (<> 
                 {/* Vista principal / biblioteca según activeView */}
                 <div className="flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
