@@ -286,3 +286,15 @@ export async function getPlaylistTracks(token: string, playlistId: string, limit
     .map(toITrack);
 }
 
+export async function getUserPlaylists(token: string, limit = 50): Promise<ISpotifyPlaylist[]> {
+  const url = `https://api.spotify.com/v1/me/playlists?limit=${limit}`;
+  const data = await spotifyFetch<{ items?: any[] }>(url, token);
+  return (data.items || []).filter(Boolean).map((p) => ({
+    id: p.id,
+    name: p.name,
+    imageUrl: p.images?.[0]?.url || "/placeholder.png",
+    description: p.description || "",
+    tracksTotal: p.tracks?.total || 0,
+  }));
+}
+
