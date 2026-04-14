@@ -5,13 +5,13 @@ import { Heart, ListPlus, PlusCircle } from "lucide-react";
 import { usePlayer } from "@/providers/PlayerProvider";
 import { usePlaylists } from "@/hooks/usePlaylists";
 import { useFavorites } from "@/hooks/useFavorites";
-import type { DeezerSearchResult } from "@/lib/player/types";
+import type { ITrack } from "@/lib/player/types";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/providers/AuthProvider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type Props = {
-  results: DeezerSearchResult[];
+  results: ITrack[];
 };
 
 export function SearchResultList({ results }: Props) {
@@ -41,9 +41,9 @@ export function SearchResultList({ results }: Props) {
               <p className="truncate text-[13px] font-semibold text-[var(--foreground)]">{item.title}</p>
               <p className="truncate text-[11px] text-[var(--muted)]">
                 {item.artist}
-                {item.durationSeconds
+                {item.durationInSeconds
                   ? (() => {
-                      const s = Math.floor(item.durationSeconds);
+                      const s = Math.floor(item.durationInSeconds);
                       const m = Math.floor(s / 60);
                       return ` • ${m}:${String(s % 60).padStart(2, "0")}`;
                     })()
@@ -58,16 +58,7 @@ export function SearchResultList({ results }: Props) {
               variant="outline"
               className="h-7 w-7 rounded-full px-0"
               onClick={() => {
-                const track = {
-                  id: `dz-${item.id}`,
-                  title: item.title,
-                  artist: item.artist,
-                  thumbnailUrl: item.thumbnailUrl,
-                  durationInSeconds: item.durationSeconds,
-                  objectUrl: item.previewUrl,
-                  sourceType: "remote" as const,
-                };
-                actions.addTrack(track);
+                actions.addTrack(item);
               }}
               >
                 <PlusCircle size={14} />
@@ -84,11 +75,11 @@ export function SearchResultList({ results }: Props) {
                       if (!playlists.length) return;
                       const target = playlists[0]!;
                       await addTrackToPlaylist(target.id, {
-                        track_id: `dz-${item.id}`,
+                        track_id: item.id,
                         title: item.title,
                         artist: item.artist,
                         thumbnail_url: item.thumbnailUrl,
-                        duration_seconds: item.durationSeconds,
+                        duration_seconds: item.durationInSeconds,
                       });
                     }}
                   >
@@ -101,7 +92,7 @@ export function SearchResultList({ results }: Props) {
                     className="h-7 w-7 rounded-full px-0"
                     onClick={async () => {
                       await addFavorite({
-                        track_id: `dz-${item.id}`,
+                        track_id: item.id,
                         title: item.title,
                         artist: item.artist,
                         thumbnail_url: item.thumbnailUrl,

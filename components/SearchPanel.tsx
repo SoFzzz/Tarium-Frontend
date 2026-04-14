@@ -2,14 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { searchDeezer } from "@/lib/deezer";
-import type { DeezerSearchResult } from "@/lib/player/types";
+import type { ITrack } from "@/lib/player/types";
 import { SearchResultList } from "./SearchResultList";
 import { Button } from "@/components/ui/button";
 
 export function SearchPanel() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<DeezerSearchResult[]>([]);
+  const [results, setResults] = useState<ITrack[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -35,12 +34,19 @@ export function SearchPanel() {
     setError(null);
 
     try {
-      const data = await searchDeezer(trimmed);
-      setResults(data);
+      const response = await fetch(`/api/spotify/search?q=${encodeURIComponent(trimmed)}`);
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error || "Error al buscar en Spotify");
+      }
+
+      const data = (await response.json()) as ITrack[];
+      setResults(Array.isArray(data) ? data : []);
       setOpen(true);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Search error", err);
-      setError(err?.message || "Error al buscar en Deezer");
+      setError(err instanceof Error ? err.message : "Error al buscar en Spotify");
       setOpen(true);
     } finally {
       setLoading(false);
@@ -51,7 +57,7 @@ export function SearchPanel() {
     <section ref={containerRef} className="relative w-full space-y-3">
       <form onSubmit={handleSearch} className="flex items-center gap-2">
         <input
-          placeholder="Buscar con Deezer"
+          placeholder="Buscar con Spotify"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
