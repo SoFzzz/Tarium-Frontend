@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import url("https://fonts.googleapis.com/css?family=SN%20Pro:700|SN%20Pro:400");
 
 :root {
   --background: #efeaea;
@@ -33,8 +34,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-manrope);
-  --font-display: var(--font-cormorant);
+  --font-sans: "SN Pro";
+  --font-display: "SN Pro";
 }
 
 * {
@@ -48,7 +49,17 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-manrope), sans-serif;
+  font-family: "SN Pro", sans-serif;
+  font-weight: 400;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5 {
+  font-family: "SN Pro", sans-serif;
+  font-weight: 700;
 }
 
 a {
