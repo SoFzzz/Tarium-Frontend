@@ -69,7 +69,7 @@ export function HomeView({ session }: { session: SpotifySessionProp }) {
     <div 
       className="flex flex-col gap-8 rounded-2xl border border-[var(--line)] p-4 sm:p-5 sm:min-h-[70vh]"
       style={{
-        background: "linear-gradient(160deg, rgba(127, 114, 192, 0.08) 0%, var(--surface) 40%)"
+        background: "linear-gradient(160deg, rgba(var(--brand-accent-rgb), 0.08) 0%, var(--surface) 40%)"
       }}
     >
       <div className="mx-auto w-full max-w-3xl pt-6 pb-4">
