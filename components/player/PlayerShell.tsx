@@ -190,13 +190,13 @@ export function PlayerShell() {
     if (restoredQueueRef.current) return;
     if (spotifySession.status === "loading") return;
     try {
-      const backup = sessionStorage.getItem(QUEUE_BACKUP_KEY);
-      console.log("backup encontrado:", backup);
+      // OAuth redirect can wipe sessionStorage; use localStorage for resilience.
+      const backup = localStorage.getItem(QUEUE_BACKUP_KEY);
       if (!backup) return;
 
       const currentQueue = actions.getState().queue;
       if (currentQueue.length > 0) {
-        sessionStorage.removeItem(QUEUE_BACKUP_KEY);
+        localStorage.removeItem(QUEUE_BACKUP_KEY);
         return;
       }
 
@@ -204,10 +204,10 @@ export function PlayerShell() {
       if (Array.isArray(restored) && restored.length > 0) {
         actions.loadQueue(restored);
       }
-      sessionStorage.removeItem(QUEUE_BACKUP_KEY);
+      localStorage.removeItem(QUEUE_BACKUP_KEY);
       restoredQueueRef.current = true;
     } catch {
-      sessionStorage.removeItem(QUEUE_BACKUP_KEY);
+      localStorage.removeItem(QUEUE_BACKUP_KEY);
       restoredQueueRef.current = true;
     }
   }, [actions, spotifySession.status]);
@@ -455,7 +455,7 @@ export function PlayerShell() {
     try {
       const currentQueue = actions.getState().queue;
       if (currentQueue.length > 0) {
-        sessionStorage.setItem(QUEUE_BACKUP_KEY, JSON.stringify(currentQueue));
+        localStorage.setItem(QUEUE_BACKUP_KEY, JSON.stringify(currentQueue));
       }
     } catch (err) {
       console.warn("No se pudo respaldar la cola antes del login Spotify", err);
