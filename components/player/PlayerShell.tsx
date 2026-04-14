@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   Clock3,
@@ -173,6 +173,7 @@ export function PlayerShell() {
   const [displayProgress, setDisplayProgress] = useState(0);
 
   const [volume, setVolume] = useState(() => actions.getState().volume ?? 70);
+  const restoredQueueRef = useRef(false);
   
   const currentTrack = state.currentTrack;
   const queue = state.queue;
@@ -186,8 +187,11 @@ export function PlayerShell() {
   }, [user]);
 
   useEffect(() => {
+    if (restoredQueueRef.current) return;
+    if (spotifySession.status === "loading") return;
     try {
       const backup = sessionStorage.getItem(QUEUE_BACKUP_KEY);
+      console.log("backup encontrado:", backup);
       if (!backup) return;
 
       const currentQueue = actions.getState().queue;
@@ -201,10 +205,12 @@ export function PlayerShell() {
         actions.loadQueue(restored);
       }
       sessionStorage.removeItem(QUEUE_BACKUP_KEY);
+      restoredQueueRef.current = true;
     } catch {
       sessionStorage.removeItem(QUEUE_BACKUP_KEY);
+      restoredQueueRef.current = true;
     }
-  }, [actions]);
+  }, [actions, spotifySession.status]);
 
   // Si cambia el track actual, reseteamos cualquier estado de seek manual
   useEffect(() => {
@@ -1004,6 +1010,32 @@ export function PlayerShell() {
                 >
                   <SkipForward size={18} />
                 </Button>
+              </div>
+              <div className="hidden w-full max-w-sm items-center gap-2 sm:flex">
+                <span className="w-10 text-right text-[10px] text-[var(--muted)]">
+                  {formatDuration(isSeeking ? (seekValue ?? displayProgress) : displayProgress)}
+                </span>
+                <Slider
+                  value={
+                    state.durationSeconds > 0
+                      ? [isSeeking ? (seekValue ?? displayProgress) : displayProgress]
+                      : [0]
+                  }
+                  max={state.durationSeconds || 0}
+                  step={1}
+                  disabled={state.durationSeconds <= 0}
+                  onValueChange={([val]) => {
+                    setIsSeeking(true);
+                    setSeekValue(val);
+                  }}
+                  onValueCommit={([val]) => {
+                    setIsSeeking(false);
+                    setSeekValue(val);
+                    setDisplayProgress(val);
+                    actions.seek(val);
+                  }}
+                />
+                <span className="w-10 text-[10px] text-[var(--muted)]">{formatDuration(state.durationSeconds)}</span>
               </div>
             </div>
 
