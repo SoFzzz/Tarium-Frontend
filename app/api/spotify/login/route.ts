@@ -54,6 +54,7 @@ export async function GET(request: Request) {
     "streaming",
     "user-read-email",
     "user-read-private",
+    "user-read-playback-state",
     "user-modify-playback-state",
     "user-top-read",
     "user-read-recently-played",
@@ -71,6 +72,8 @@ export async function GET(request: Request) {
   authorizeUrl.searchParams.set("code_challenge_method", "S256");
   authorizeUrl.searchParams.set("code_challenge", codeChallenge);
   authorizeUrl.searchParams.set("scope", scopes);
+  // Temporary: force consent screen to ensure new scopes are applied.
+  authorizeUrl.searchParams.set("show_dialog", "true");
 
   const response = NextResponse.redirect(authorizeUrl);
   const isProd = process.env.NODE_ENV === "production";
