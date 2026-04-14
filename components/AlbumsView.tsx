@@ -13,27 +13,18 @@ export function AlbumsView({ spotifyConnected }: { spotifyConnected?: boolean })
   const [loadingAlbumId, setLoadingAlbumId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!spotifyConnected) return;
     setLoading(true);
-    fetch("/api/spotify/recently-played")
+    // Use new-releases (works with client credentials even without login)
+    fetch("/api/spotify/new-releases")
       .then((r) => r.json())
       .then((data) => {
         if (!data.error && Array.isArray(data)) {
-          // Deduplicate by album id
-          const seen = new Set<string>();
-          const unique: IAlbum[] = [];
-          for (const album of data) {
-            if (!seen.has(album.id)) {
-              seen.add(album.id);
-              unique.push(album);
-            }
-          }
-          setAlbums(unique);
+          setAlbums(data);
         }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [spotifyConnected]);
+  }, []);
 
   const handlePlayAlbum = async (album: IAlbum) => {
     setLoadingAlbumId(album.id);
@@ -53,17 +44,13 @@ export function AlbumsView({ spotifyConnected }: { spotifyConnected?: boolean })
   return (
     <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-6">
       <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--muted)]">
-        Álbumes recientes
+        Nuevos lanzamientos
       </p>
       {loading ? (
         <div className="mt-8 text-center text-sm text-[var(--muted)]">Cargando álbumes…</div>
-      ) : !spotifyConnected ? (
-        <div className="mt-8 text-center text-sm text-[var(--muted)]">
-          Conecta Spotify para ver tus álbumes recientes.
-        </div>
       ) : albums.length === 0 ? (
         <div className="mt-8 text-center text-sm text-[var(--muted)]">
-          No se encontraron álbumes recientes.
+          No se encontraron álbumes.
         </div>
       ) : (
         <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
