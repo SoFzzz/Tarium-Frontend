@@ -50,7 +50,7 @@ import { usePlayer } from "@/providers/PlayerProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { usePlaylists, type Playlist, type PlaylistTrack } from "@/hooks/usePlaylists";
 import { useFavorites, type Favorite } from "@/hooks/useFavorites";
-import { SearchPanel } from "@/components/SearchPanel";
+
 import { LocalLibraryDropzone } from "@/components/LocalLibraryDropzone";
 import { LibraryView } from "./LibraryView";
 import { FavoritesView } from "./FavoritesView";
