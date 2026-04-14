@@ -14,10 +14,13 @@ export async function GET() {
     // /v1/browse/new-releases was removed by Spotify (Nov 2024).
     // Use search with year filter as replacement.
     const res = await fetch(
-      "https://api.spotify.com/v1/search?q=year:2025&type=album&limit=30&market=ES",
+      "https://api.spotify.com/v1/search?q=year:2024&type=album&limit=30&market=ES",
       { headers: { Authorization: `Bearer ${token}` } },
     );
-    if (!res.ok) throw new Error(`Spotify ${res.status}`);
+    if (!res.ok) {
+      // Must not break the app.
+      return NextResponse.json([], { status: 200 });
+    }
     const data = await res.json();
 
     const albums = (data.albums?.items || []).map((a: any) => ({
@@ -32,7 +35,6 @@ export async function GET() {
     applyRefreshedCookies(response, result?.refreshed ?? null);
     return response;
   } catch (err) {
-    console.error("[new-releases]", err);
     return NextResponse.json([], { status: 200 });
   }
 }
