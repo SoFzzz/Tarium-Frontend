@@ -25,7 +25,8 @@ import {
   Trash2,
   Music2,
   Disc3,
-  Radio
+  Radio,
+  FolderOpen
 } from "lucide-react";
 import {
   DndContext,
@@ -66,6 +67,7 @@ import { HomeView } from "@/components/HomeView";
 import { NowPlayingView } from "@/components/NowPlayingView";
 import { ArtistsView } from "@/components/ArtistsView";
 import { GenresView } from "@/components/GenresView";
+import { AlbumsView } from "@/components/AlbumsView";
 
 const formatDuration = (seconds?: number) => {
   if (seconds === undefined) {
@@ -445,6 +447,7 @@ export function PlayerShell() {
               {/* Personal */}
               <SidebarIcon icon={Star} label="Favoritos" active={activeView === "favorites"} onClick={() => setActiveView("favorites")} />
               <SidebarIcon icon={ListMusic} label="Playlists" active={activeView === "playlists"} onClick={() => setActiveView("playlists")} />
+              <SidebarIcon icon={FolderOpen} label="Biblioteca" active={activeView === "library"} onClick={() => setActiveView("library")} />
               
               <hr className="my-1 w-8 border-[var(--line)] opacity-50" />
               
@@ -498,9 +501,6 @@ export function PlayerShell() {
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="hidden w-full max-w-xl sm:block">
-                {activeView !== "home" && <SearchPanel />}
-              </div>
 
               <div className="hidden items-center gap-2 sm:flex">
                 {spotifySession.status === "connected" ? (
@@ -559,13 +559,6 @@ export function PlayerShell() {
 
           {/* Área principal */}
           <div className="flex flex-1 flex-col gap-4 bg-[var(--background)] px-4 pt-4 pb-32 sm:px-6 sm:pb-24">
-            {activeView !== "home" && (
-            <div className="sm:hidden">
-              <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-3">
-                <SearchPanel />
-              </div>
-            </div>
-            )}
             <div className="grid gap-4 grid-cols-1">
               {/* Columna unica: vistas dinámicas */}
               <div className="flex flex-col gap-4">
@@ -574,9 +567,11 @@ export function PlayerShell() {
                 ) : activeView === "home" ? (
                   <HomeView session={spotifySession} />
                 ) : activeView === "artists" ? (
-                  <ArtistsView />
+                  <ArtistsView spotifyConnected={spotifySession.status === "connected"} />
                 ) : activeView === "genres" ? (
-                  <GenresView />
+                  <GenresView spotifyConnected={spotifySession.status === "connected"} />
+                ) : activeView === "albums" ? (
+                  <AlbumsView spotifyConnected={spotifySession.status === "connected"} />
                 ) : (<> 
                 {/* Vista principal / biblioteca según activeView */}
                 <div className="flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
@@ -863,6 +858,7 @@ export function PlayerShell() {
             <MobileNavIcon icon={Radio} label="Géneros" active={activeView === "genres"} onClick={() => setActiveView("genres")} />
             <MobileNavIcon icon={Star} label="Favs" active={activeView === "favorites"} onClick={() => setActiveView("favorites")} />
             <MobileNavIcon icon={ListMusic} label="Listas" active={activeView === "playlists"} onClick={() => setActiveView("playlists")} />
+            <MobileNavIcon icon={FolderOpen} label="Local" active={activeView === "library"} onClick={() => setActiveView("library")} />
             <MobileNavIcon icon={Play} label="Actual" active={activeView === "nowplaying"} onClick={() => setActiveView("nowplaying")} />
           </nav>
           <footer
