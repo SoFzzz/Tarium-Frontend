@@ -5,6 +5,7 @@ import { type ITrack } from "@/lib/player/types";
 import { usePlayer } from "@/providers/PlayerProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { useFavorites } from "@/hooks/useFavorites";
+import { useDominantColor } from "@/hooks/useDominantColor";
 import { Clock3, ListMusic, Heart, Trash2, GripVertical } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { AuthModalControlled } from "@/components/auth/AuthModal";
@@ -44,6 +45,7 @@ export function NowPlayingView() {
   const currentTrackId = currentTrack?.id ?? null;
   const queue = state.queue;
   const displayProgress = state.progressSeconds;
+  const heroColor = useDominantColor(currentTrack?.thumbnailUrl);
 
   const [isSeeking, setIsSeeking] = useState(false);
   const [seekValue, setSeekValue] = useState(0);
@@ -68,7 +70,10 @@ export function NowPlayingView() {
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <div className="flex flex-col gap-4">
-        <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
+        <div
+          className="rounded-2xl border border-[var(--line)] p-4 sm:p-5 transition-[background] duration-700"
+          style={{ background: `linear-gradient(to bottom, ${heroColor} 0%, var(--surface) 55%, var(--surface) 100%)` }}
+        >
           <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
             Reproduciendo ahora
           </p>
