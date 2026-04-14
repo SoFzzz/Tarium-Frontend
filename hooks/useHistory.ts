@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect } from 'react';
 
-import { useAuth } from '@/providers/AuthProvider';
 import { usePersistenceAdapter } from '@/lib/persistence';
 import type { PersistedHistoryEntry } from '@/lib/persistence/types';
 
@@ -27,7 +26,6 @@ interface UseHistory {
 }
 
 export function useHistory(): UseHistory {
-  const { user } = useAuth();
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,12 +37,6 @@ export function useHistory(): UseHistory {
     setError(null);
 
     try {
-      // BUGS.txt: No hay backend REST para historial. Mantener solo guest/local.
-      if (user) {
-        setHistory([]);
-        return;
-      }
-
       const stored = await persistence.getHistory();
       const mapped: HistoryEntry[] = stored
         .slice()
@@ -57,7 +49,7 @@ export function useHistory(): UseHistory {
     } finally {
       setLoading(false);
     }
-  }, [persistence, user]);
+  }, [persistence]);
 
   const registerPlay = useCallback(
     async (
@@ -69,12 +61,7 @@ export function useHistory(): UseHistory {
       try {
         const now = new Date().toISOString();
 
-        // BUGS.txt: No hay backend REST para historial. Mantener solo guest/local.
-        if (user) {
-          return;
-        }
-
-        // Guest: upsert local por track_id.
+        // Upsert local por track_id.
         const existing = await persistence.getHistory();
         const index = existing.findIndex((h) => h.track_id === entry.track_id);
 
@@ -118,7 +105,7 @@ export function useHistory(): UseHistory {
         setLoading(false);
       }
     },
-    [getRecent, persistence, user],
+    [getRecent, persistence],
   );
 
   useEffect(() => {
