@@ -8,7 +8,7 @@ import { Play } from "lucide-react";
 import { usePlayer } from "@/providers/PlayerProvider";
 
 interface SpotifySessionProp {
-  status: "loading" | "connected" | "disconnected";
+  status: "loading" | "connected" | "disconnected" | "error";
 }
 
 export function HomeView({ session }: { session: SpotifySessionProp }) {
