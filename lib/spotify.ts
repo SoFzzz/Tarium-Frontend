@@ -213,3 +213,28 @@ export async function getRecommendations(token: string, seedArtists: string[], l
   const data = await spotifyFetch<{ tracks?: SpotifyTrack[] }>(url.toString(), token);
   return (data.tracks || []).map(toITrack);
 }
+
+export async function getArtistTopTracks(token: string, artistId: string, market = "US"): Promise<ITrack[]> {
+  const url = `https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=${market}`;
+  const data = await spotifyFetch<{ tracks?: SpotifyTrack[] }>(url, token);
+  return (data.tracks || []).map(toITrack);
+}
+
+export async function getArtistAlbums(token: string, artistId: string, limit = 20): Promise<IAlbum[]> {
+  const url = `https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single&limit=${limit}`;
+  const data = await spotifyFetch<{ items?: any[] }>(url, token);
+  const seen = new Set<string>();
+  const albums: IAlbum[] = [];
+  for (const item of data.items || []) {
+    const name = (item.name as string).toLowerCase();
+    if (seen.has(name)) continue;
+    seen.add(name);
+    albums.push({
+      id: item.id,
+      name: item.name,
+      artist: item.artists?.[0]?.name || "Artista desconocido",
+      imageUrl: item.images?.[0]?.url || "/placeholder.png",
+    });
+  }
+  return albums;
+}
