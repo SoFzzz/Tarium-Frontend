@@ -32,15 +32,20 @@ export function useSpotifySession() {
         }
 
         if (!res.ok) {
-          setState({ status: "error", me: null });
+          // Treat server errors as disconnected so UI doesn't get stuck on "loading"
+          setState({ status: "disconnected", me: null });
           return;
         }
 
         const me = (await res.json()) as SpotifyMe;
-        setState({ status: "connected", me });
+        if (me.id) {
+          setState({ status: "connected", me });
+        } else {
+          setState({ status: "disconnected", me: null });
+        }
       } catch {
         if (!alive) return;
-        setState({ status: "error", me: null });
+        setState({ status: "disconnected", me: null });
       }
     };
 
