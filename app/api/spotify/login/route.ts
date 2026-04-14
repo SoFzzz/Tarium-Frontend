@@ -33,7 +33,7 @@ function getRequestOrigin(request: Request): string {
 function getRedirectUri(request: Request): string {
   const configured = process.env.SPOTIFY_REDIRECT_URI?.trim();
   if (configured) return configured;
-  return new URL("/api/spotify/callback", getRequestOrigin(request)).toString();
+  return new URL("/callback", getRequestOrigin(request)).toString();
 }
 
 export async function GET(request: Request) {
@@ -55,6 +55,10 @@ export async function GET(request: Request) {
     "user-read-email",
     "user-read-private",
     "user-modify-playback-state",
+    "user-top-read",
+    "user-read-recently-played",
+    "user-library-read",
+    "user-library-modify",
   ].join(" ");
 
   const authorizeUrl = new URL("https://accounts.spotify.com/authorize");
