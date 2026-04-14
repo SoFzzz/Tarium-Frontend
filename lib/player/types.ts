@@ -25,11 +25,18 @@ export interface ITrack {
   thumbnailUrl: string;
   durationInSeconds?: number;
   album?: string;
+  /**
+   * URI/URL de reproducción para fuentes remotas (ej: Spotify `spotify:track:...`).
+   * Algunos adaptadores (Spotify SDK) usan este campo.
+   */
+  audioUrl?: string;
   // Para fuentes locales podemos conservar el nombre de archivo para hints de formato.
   fileName?: string;
   // Fuente local real del audio.
   objectUrl?: string;
   sourceType?: "local" | "remote";
+  /** Fuente lógica del track (opcional, para UI/analytics). */
+  source?: "spotify" | "deezer" | "youtube" | "local";
 }
 
 export interface PlaybackState {

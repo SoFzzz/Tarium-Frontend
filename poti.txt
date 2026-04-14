@@ -1,0 +1,73 @@
+Bloque 2 — Rutas OAuth PKCE
+Archivos nuevos: app/api/spotify/login/route.ts, app/api/spotify/callback/route.ts
+
+login/route.ts genera la URL de autorización de Spotify con los scopes streaming, user-read-email, user-read-private, user-modify-playback-state y redirige al usuario.
+callback/route.ts recibe el código de Spotify, lo intercambia por access_token y refresh_token, y los guarda en cookies HTTP-only. Luego redirige a /.
+
+
+Bloque 3 — Cliente Spotify
+Archivo nuevo: lib/spotify.ts
+Reemplaza lib/deezer.ts. Exporta estas funciones que el agente debe implementar:
+
+searchTracks(query, token) — llama a GET /v1/search?type=track y devuelve un array de ITrack con source: 'spotify'
+getTrack(id, token) — llama a GET /v1/tracks/{id}
+refreshAccessToken(refreshToken) — llama al endpoint de token de Spotify y devuelve un nuevo access_token
+
+El mapeo de SpotifyTrack a ITrack que ya usa el proyecto:
+typescript{
+  id: track.id,
+  title: track.name,
+  artist: track.artists[0].name,
+  album: track.album.name,
+  duration: track.duration_ms / 1000,
+  coverUrl: track.album.images[0]?.url,
+  audioUrl: track.uri, // spotify:track:XXXX — usado por el SDK
+  source: 'spotify'
+}
+
+Bloque 4 — Proxy de búsqueda server-side
+Archivo nuevo: app/api/spotify/search/route.ts
+Igual al patrón existente de app/api/deezer/search/route.ts. Lee el token de la cookie, llama a searchTracks() de lib/spotify.ts, devuelve el array de ITrack. Esto evita exponer el token en el frontend.
+
+Bloque 5 — Web Playback SDK (reproductor real)
+Archivo nuevo: lib/player/spotify-audio-adapter.ts
+Implementa la interfaz MediaAdapter que ya existe en lib/player/media-adapter.ts. El agente debe:
+
+Cargar el script del SDK de Spotify en el <head> via useEffect en PlayerApp.tsx:
+
+html<script src="https://sdk.scdn.co/spotify-player.js"></script>
+
+En spotify-audio-adapter.ts, inicializar window.Spotify.Player con el access_token del usuario.
+Implementar los métodos del MediaAdapter:
+
+play(track) → llama a PUT /v1/me/player/play con uris: [track.audioUrl]
+pause() → player.pause()
+resume() → player.resume()
+seek(seconds) → player.seek(seconds * 1000)
+setVolume(v) → player.setVolume(v)
+onTimeUpdate(cb) → polling con player.getCurrentState() cada 500ms
+onEnded(cb) → detectar cuando position === 0 y paused === true tras haber reproducido
+
+
+En PlayerApp.tsx o PlayerProvider.tsx, instanciar SpotifyAudioAdapter en lugar de HowlerAudioAdapter cuando el usuario esté autenticado con Spotify.
+
+
+Bloque 6 — UI: botón de login y estado de sesión
+Archivos: components/auth/AuthModal.tsx o components/player/PlayerShell.tsx
+
+Agregar botón "Conectar con Spotify" que llame a /api/spotify/login.
+Leer el access_token de la cookie en el cliente para saber si el usuario ya está conectado.
+Si está conectado, mostrar su nombre/avatar (disponible en GET /v1/me).
+Si el token expiró, llamar automáticamente a refreshAccessToken() antes de cualquier petición.
+
+
+Bloque 7 — Limpiar referencias a Deezer
+Archivos: SearchPanel.tsx, SearchResultList.tsx, app/api/deezer/
+
+En SearchPanel.tsx, cambiar la llamada a /api/deezer/search por /api/spotify/search.
+El resto del flujo (resultados → ITrack → PlayerManager) no cambia porque el tipo ITrack ya es agnóstico a la fuente.
+Mantener lib/deezer.ts y la ruta Deezer sin borrar por ahora, solo dejar de usarlos, por si el agente necesita referencia del patrón.
+
+
+Orden de ejecución recomendado para el agente
+Ejecutar en este orden exacto: Bloque 1 → 2 → 3 → 4 → verificar que la búsqueda funciona → 5 → 6 → 7. No hacer el Bloque 5 antes de confirmar que el OAuth (Bloque 2) devuelve un token válido, porque el SDK lo necesita para inicializarse.

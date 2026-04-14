@@ -4,7 +4,7 @@ import { createContext, useContext, useState } from "react";
 
 import { usePlayerManager } from "@/hooks/usePlayerManager";
 import { PlayerManager } from "@/lib/player/player-manager";
-import { HowlerAudioAdapter } from "@/lib/player/howler-audio-adapter";
+import { MultiSourceAudioAdapter } from "@/lib/player/multi-source-audio-adapter";
 
 type PlayerContextValue = ReturnType<typeof usePlayerManager>;
 
@@ -12,7 +12,7 @@ const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [manager] = useState(
-    () => new PlayerManager([], new HowlerAudioAdapter()),
+    () => new PlayerManager([], new MultiSourceAudioAdapter()),
   );
   const value = usePlayerManager(manager);
 
