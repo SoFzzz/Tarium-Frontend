@@ -43,8 +43,9 @@ export function HomeView({ session }: { session: SpotifySessionProp }) {
         if (artists.length > 0) {
           const seeds = artists.slice(0, 5).map(a => a.id).join(",");
           const recRes = await fetch(`/api/spotify/recommendations?seed_artists=${seeds}`).then(r => r.json());
+          const recItems = Array.isArray(recRes) ? recRes : (recRes?.tracks?.items ?? []);
           if (!recRes.error && isMounted) {
-            setRecommendations(recRes);
+            setRecommendations(recItems);
           }
         }
       } catch (err) {
