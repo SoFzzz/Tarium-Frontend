@@ -111,6 +111,10 @@ export class HowlerAudioAdapter implements MediaAdapter {
     this.timeUpdateHandler(position, duration);
   }
 
+  public destroy(): void {
+    this.cleanupCurrentHowl();
+  }
+
   private cleanupCurrentHowl(): void {
     this.stopTimeUpdates();
 
