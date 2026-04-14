@@ -824,6 +824,24 @@ export function PlayerShell() {
                       if (selectedPlaylistId !== playlistId) return;
                       setPlaylistTracks(newTracks);
                     }}
+                    spotifyConnected={spotifySession.status === "connected"}
+                    onImportSpotifyPlaylist={async (name, tracks) => {
+                      if (!user) {
+                        setAuthModalOpen(true);
+                        return;
+                      }
+                      const pl = await createPlaylist(name);
+                      if (!pl) return;
+                      for (const t of tracks) {
+                        await addTrackToPlaylist(pl.id, {
+                          track_id: t.id,
+                          title: t.title,
+                          artist: t.artist,
+                          thumbnail_url: t.thumbnailUrl,
+                          duration_seconds: t.durationInSeconds,
+                        });
+                      }
+                    }}
                   />
                 )}
                 </>)}
