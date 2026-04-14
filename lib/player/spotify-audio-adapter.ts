@@ -292,4 +292,16 @@ export class SpotifyAudioAdapter implements MediaAdapter {
       this.endedHandler?.();
     }
   }
+  public async destroy(): Promise<void> {
+    this.stopPolling();
+    try {
+      await this.player?.pause();
+    } catch {
+      // Ignore errors when pausing during destroy
+    }
+    this.lastTrackUri = null;
+    this.hadProgressSincePlay = false;
+    this.lastPaused = null;
+    this.lastPositionMs = 0;
+  }
 }
