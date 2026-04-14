@@ -1,69 +1,36 @@
 import { NextResponse } from "next/server";
-import { getArtistAlbums, refreshAccessTokenWithExpiresIn } from "@/lib/spotify";
+import { getValidToken, getClientCredentialsToken, applyRefreshedCookies } from "@/lib/spotify-token";
 
 export const runtime = "nodejs";
 
-const ACCESS_TOKEN_COOKIE = "spotify_access_token";
-const REFRESH_TOKEN_COOKIE = "spotify_refresh_token";
-const EXPIRES_AT_COOKIE = "spotify_expires_at";
-
-function getCookie(request: Request, name: string): string | null {
-  const cookieHeader = request.headers.get("cookie") ?? "";
-  for (const part of cookieHeader.split(";")) {
-    const trimmed = part.trim();
-    if (!trimmed) continue;
-    const idx = trimmed.indexOf("=");
-    if (idx === -1) continue;
-    const key = trimmed.slice(0, idx);
-    if (key !== name) continue;
-    return decodeURIComponent(trimmed.slice(idx + 1));
-  }
-  return null;
-}
-
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id: artistId } = await params;
-  let token = getCookie(request, ACCESS_TOKEN_COOKIE);
-  const refreshToken = getCookie(request, REFRESH_TOKEN_COOKIE);
-  const expiresAt = getCookie(request, EXPIRES_AT_COOKIE);
-
-  let refreshed: { accessToken: string; expiresIn: number } | null = null;
-
-  if (token && refreshToken && expiresAt) {
-    const expiresAtSeconds = Number(expiresAt);
-    const now = Math.floor(Date.now() / 1000);
-    if (Number.isFinite(expiresAtSeconds) && expiresAtSeconds - now <= 60) {
-      try {
-        refreshed = await refreshAccessTokenWithExpiresIn(refreshToken);
-        token = refreshed.accessToken;
-      } catch (err) {
-        console.error("Failed to refresh token:", err);
-      }
-    }
-  }
-
-  if (!token) {
-    return NextResponse.json({ error: "No conectado a Spotify" }, { status: 401 });
-  }
-
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const albums = await getArtistAlbums(token, artistId);
-    const response = NextResponse.json(albums);
-
-    if (refreshed) {
-      const isProd = process.env.NODE_ENV === "production";
-      const expiresAtSeconds = Math.floor(Date.now() / 1000) + refreshed.expiresIn;
-      response.cookies.set(ACCESS_TOKEN_COOKIE, refreshed.accessToken, {
-        httpOnly: true, secure: isProd, sameSite: "lax", path: "/", maxAge: refreshed.expiresIn,
-      });
-      response.cookies.set(EXPIRES_AT_COOKIE, String(expiresAtSeconds), {
-        httpOnly: true, secure: isProd, sameSite: "lax", path: "/", maxAge: 30 * 24 * 60 * 60,
-      });
+    const { id: artistId } = await params;
+    const result = await getValidToken();
+    const token = result?.token ?? await getClientCredentialsToken();
+    if (!token) {
+      return NextResponse.json({ error: "no_token" }, { status: 401 });
     }
 
+    const res = await fetch(
+      `https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single&limit=20`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) throw new Error(`Spotify ${res.status}`);
+    const data = await res.json();
+
+    const albums = (data.items || []).map((a: any) => ({
+      id: a.id,
+      name: a.name,
+      artist: a.artists?.map((ar: any) => ar.name).join(", ") || "Artista desconocido",
+      imageUrl: a.images?.[0]?.url || "/placeholder.png",
+    }));
+
+    const response = NextResponse.json(albums);
+    applyRefreshedCookies(response, result?.refreshed ?? null);
     return response;
   } catch (err) {
-    console.error("Spotify artist albums failed", err);
-    return NextResponse.json({ error: "No se pudo consultar Spotify" }, { status: 502 });
+    console.error("[artist albums]", err);
+    return NextResponse.json({ error: "internal" }, { status: 500 });
   }
 }
