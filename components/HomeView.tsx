@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { SearchPanel } from "./SearchPanel";
 import { type ITrack } from "@/lib/player/types";
 import { type IArtist, type IAlbum } from "@/lib/spotify";
 import { Play } from "lucide-react";
@@ -76,10 +75,6 @@ export function HomeView({ session }: { session: SpotifySessionProp }) {
         <h2 className="mb-4 text-center font-[family-name:var(--font-cormorant)] text-3xl sm:text-5xl font-semibold">
           ¿Qué quieres escuchar hoy?
         </h2>
-        <SearchPanel 
-          className="w-full mx-auto shadow-md rounded-full" 
-          placeholder="Buscar artistas, canciones, álbumes..." 
-        />
       </div>
 
       {session.status === "loading" && (
