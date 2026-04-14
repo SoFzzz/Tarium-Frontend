@@ -108,18 +108,24 @@ export function PlaylistsView({
   const [loadingSpotify, setLoadingSpotify] = useState(false);
   const [importingId, setImportingId] = useState<string | null>(null);
   const [showSpotifySection, setShowSpotifySection] = useState(false);
+  const [spotifyError, setSpotifyError] = useState<string | null>(null);
 
   const handleLoadSpotifyPlaylists = async () => {
     setLoadingSpotify(true);
+    setSpotifyError(null);
+    setShowSpotifySection(true);
     try {
       const res = await fetch("/api/spotify/me/playlists");
-      const data = await res.json();
-      if (!data.error) {
-        setSpotifyPlaylists(data);
-        setShowSpotifySection(true);
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error || `HTTP ${res.status}`);
       }
+      const data = await res.json();
+      setSpotifyPlaylists(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Error loading Spotify playlists", err);
+      setSpotifyPlaylists([]);
+      setSpotifyError("No pudimos cargar tus playlists de Spotify. Verifica tu sesión y vuelve a intentar.");
     } finally {
       setLoadingSpotify(false);
     }
@@ -128,14 +134,20 @@ export function PlaylistsView({
   const handleImportPlaylist = async (sp: ISpotifyPlaylist) => {
     if (!onImportSpotifyPlaylist) return;
     setImportingId(sp.id);
+    setSpotifyError(null);
     try {
       const res = await fetch(`/api/spotify/playlists/${sp.id}/tracks`);
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error || `HTTP ${res.status}`);
+      }
       const tracks: ITrack[] = await res.json();
       if (tracks.length > 0) {
         await onImportSpotifyPlaylist(sp.name, tracks);
       }
     } catch (err) {
       console.error("Error importing playlist", err);
+      setSpotifyError(`No pudimos importar "${sp.name}". Intenta de nuevo.`);
     } finally {
       setImportingId(null);
     }
@@ -284,7 +296,13 @@ export function PlaylistsView({
         </div>
 
         {showSpotifySection && spotifyPlaylists.length === 0 && !loadingSpotify && (
-          <p className="text-xs text-[var(--muted)]">No se encontraron playlists en tu cuenta de Spotify.</p>
+          <p className="text-xs text-[var(--muted)]">
+            {spotifyError ?? "No se encontraron playlists en tu cuenta de Spotify."}
+          </p>
+        )}
+
+        {showSpotifySection && spotifyError && spotifyPlaylists.length > 0 && (
+          <p className="text-xs text-red-400">{spotifyError}</p>
         )}
 
         {showSpotifySection && spotifyPlaylists.length > 0 && (
