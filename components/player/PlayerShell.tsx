@@ -55,6 +55,8 @@ import { LibraryView } from "./LibraryView";
 import { FavoritesView } from "./FavoritesView";
 import { PlaylistsView } from "./PlaylistsView";
 import { mapLocalTrackToITrack, type LocalTrack, type ITrack } from "@/lib/player/types";
+import { hydrateTrackPayload, rememberTrackPayload } from "@/lib/player/track-payload";
+import { canonicalTrackIdentity, parseTrackStorageId, toTrackStorageId } from "@/lib/player/track-key";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 // import { ScrollArea } from "@/components/ui/scroll-area";
@@ -158,7 +160,16 @@ export function PlayerShell() {
   const { favorites, addFavorite, removeFavorite, isFavorite, spotifyFavIds } = useFavorites();
 
   // Set estable: evita re-renders de LibraryView por ticks de progreso.
-  const favoritedIds = useMemo(() => new Set<string>(favorites.map((f) => f.track_id)), [favorites]);
+  const favoritedIds = useMemo(
+    () =>
+      new Set<string>(
+        favorites.flatMap((f) => {
+          const parsed = parseTrackStorageId(f.track_id);
+          return [f.track_id, parsed.rawId, canonicalTrackIdentity(f.track_id)];
+        }),
+      ),
+    [favorites],
+  );
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
@@ -187,11 +198,15 @@ export function PlayerShell() {
 
   const [volume, setVolume] = useState(() => actions.getState().volume ?? 70);
   const restoredQueueRef = useRef(false);
+  const seekSyncLockRef = useRef(false);
+  const seekSyncUnlockTimeoutRef = useRef<number | null>(null);
   
   const currentTrack = state.currentTrack;
   const queue = state.queue;
   const currentTrackQueueItemId = currentTrack?.queueItemId ?? null;
-  const isCurrentTrackFavorite = currentTrack ? isFavorite(currentTrack.id) : false;
+  const isCurrentTrackFavorite = currentTrack
+    ? isFavorite(toTrackStorageId(currentTrack))
+    : false;
 
   const isSpotifyTrack = (track: ITrack | null | undefined) =>
     Boolean(track && (track.source === "spotify" || track.audioUrl?.startsWith("spotify:") === true));
@@ -206,8 +221,59 @@ export function PlayerShell() {
   const handlePlaybackError = (err: unknown, track: ITrack | null | undefined) => {
     if (isSpotifyTrack(track)) {
       setSpotifyPlaybackNotice("Reconecta Spotify para reproducir esta pista.");
+      return;
     }
-    console.error("Playback error:", err);
+
+    const message = err instanceof Error ? err.message : String(err ?? "");
+    const expectedSpotifyFailure =
+      message.includes("Spotify requiere reconexion") ||
+      message.includes("No conectado a Spotify") ||
+      message.includes("Spotify Player connect failed") ||
+      message.includes("No se pudo reproducir el track seleccionado.");
+
+    if (!expectedSpotifyFailure) {
+      console.error("Playback error:", err);
+    }
+  };
+
+  const playQueueItemValidated = async (
+    queueItemId: string,
+    track: ITrack | null | undefined,
+  ): Promise<boolean> => {
+    if (!ensureSpotifyPlaybackAllowed(track)) return false;
+
+    try {
+      await actions.playByQueueItemId(queueItemId);
+      return true;
+    } catch (err) {
+      handlePlaybackError(err, track);
+      return false;
+    }
+  };
+
+  const toPlayableTrack = (track: ITrack): ITrack => {
+    const hydrated = hydrateTrackPayload(track);
+    const hydratedIdentity = canonicalTrackIdentity(toTrackStorageId(hydrated));
+
+    const fromQueue = queue.find(
+      (item) => canonicalTrackIdentity(toTrackStorageId(item)) === hydratedIdentity,
+    );
+
+    if (!fromQueue) {
+      return hydrated;
+    }
+
+    return {
+      ...fromQueue,
+      ...hydrated,
+      audioUrl: hydrated.audioUrl ?? fromQueue.audioUrl,
+      objectUrl: hydrated.objectUrl ?? fromQueue.objectUrl,
+      source: hydrated.source ?? fromQueue.source,
+      sourceType: hydrated.sourceType ?? fromQueue.sourceType,
+      fileName: hydrated.fileName ?? fromQueue.fileName,
+      album: hydrated.album ?? fromQueue.album,
+      thumbnailUrl: hydrated.thumbnailUrl || fromQueue.thumbnailUrl,
+    };
   };
 
   const getCurrentIndex = () =>
@@ -255,7 +321,7 @@ export function PlayerShell() {
       if (Array.isArray(restored) && restored.length > 0) {
         const safeRestored = restored.filter(isTrackValidAcrossSessions);
         if (safeRestored.length > 0) {
-          actions.loadQueue(safeRestored);
+          actions.restoreQueueWithoutCurrent(safeRestored);
         }
       }
       localStorage.removeItem(QUEUE_BACKUP_KEY);
@@ -300,8 +366,17 @@ export function PlayerShell() {
   // Sincronizar con el valor real cada vez que Howler/PlayerManager actualiza.
   useEffect(() => {
     if (isSeeking) return;
+    if (seekSyncLockRef.current) return;
     setDisplayProgress(state.progressSeconds);
   }, [state.progressSeconds, isSeeking]);
+
+  useEffect(() => {
+    return () => {
+      if (seekSyncUnlockTimeoutRef.current !== null) {
+        window.clearTimeout(seekSyncUnlockTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // El slider de volumen debe tener estado propio (no depender de re-renders por progreso).
   useEffect(() => {
@@ -310,6 +385,7 @@ export function PlayerShell() {
 
   const handleLocalDropzoneTracksParsed = (localTracks: LocalTrack[]) => {
     const mapped = localTracks.map(mapLocalTrackToITrack);
+    mapped.forEach((track) => rememberTrackPayload(track));
 
     if (state.queue.length === 0) {
       actions.loadQueue(mapped);
@@ -332,10 +408,10 @@ export function PlayerShell() {
 
     try {
       if (isCurrentTrackFavorite) {
-        await removeFavorite(currentTrack.id);
+        await removeFavorite(toTrackStorageId(currentTrack));
       } else {
         await addFavorite({
-          track_id: currentTrack.id,
+          track_id: toTrackStorageId(currentTrack),
           title: currentTrack.title,
           artist: currentTrack.artist,
           thumbnail_url: currentTrack.thumbnailUrl,
@@ -391,60 +467,122 @@ export function PlayerShell() {
     }
   };
 
-  const mapPlaylistTrackToITrack = (track: PlaylistTrack): ITrack => ({
-    queueItemId: track.id,
-    id: track.track_id,
-    title: track.title,
-    artist: track.artist,
-    thumbnailUrl: track.thumbnail_url,
-    durationInSeconds: track.duration_seconds,
-    audioUrl:
-      track.track_id.startsWith("spotify:track:")
-        ? track.track_id
-        : /^[A-Za-z0-9]{22}$/.test(track.track_id)
-          ? `spotify:track:${track.track_id}`
-          : undefined,
-    source:
-      track.track_id.startsWith("spotify:track:") || /^[A-Za-z0-9]{22}$/.test(track.track_id)
-        ? "spotify"
-        : undefined,
-    sourceType:
-      track.track_id.startsWith("spotify:track:") || /^[A-Za-z0-9]{22}$/.test(track.track_id)
-        ? "remote"
-        : undefined,
-  });
+  const mapPlaylistTrackToITrack = (track: PlaylistTrack): ITrack => {
+    const parsed = parseTrackStorageId(track.track_id);
+    const spotifyLegacy =
+      track.track_id.startsWith("spotify:track:") || /^[A-Za-z0-9]{22}$/.test(track.track_id);
+    const spotify = parsed.source === "spotify" || spotifyLegacy;
+    const spotifyRawId = parsed.source === "spotify"
+      ? parsed.rawId
+      : track.track_id.replace("spotify:track:", "");
+    const normalizedStoredId = parsed.source
+      ? track.track_id
+      : spotifyLegacy
+        ? `sp:${spotifyRawId}`
+        : track.track_id;
 
-  const mapFavoriteToITrack = (fav: Favorite): ITrack => ({
-    id: fav.track_id,
-    title: fav.title,
-    artist: fav.artist,
-    thumbnailUrl: fav.thumbnail_url,
-  });
+    return toPlayableTrack({
+      queueItemId: track.id,
+      id: normalizedStoredId,
+      title: track.title,
+      artist: track.artist,
+      thumbnailUrl: track.thumbnail_url,
+      durationInSeconds: track.duration_seconds,
+      audioUrl: spotify ? `spotify:track:${spotifyRawId}` : undefined,
+      source: spotify ? "spotify" : parsed.source ?? undefined,
+      sourceType: spotify ? "remote" : undefined,
+    });
+  };
+
+  const mapFavoriteToITrack = (fav: Favorite): ITrack => {
+    const parsed = parseTrackStorageId(fav.track_id);
+    const spotifyLegacy =
+      fav.track_id.startsWith("spotify:track:") || /^[A-Za-z0-9]{22}$/.test(fav.track_id);
+    const spotify = parsed.source === "spotify" || spotifyLegacy;
+    const spotifyRawId = parsed.source === "spotify"
+      ? parsed.rawId
+      : fav.track_id.replace("spotify:track:", "");
+    const normalizedStoredId = parsed.source
+      ? fav.track_id
+      : spotifyLegacy
+        ? `sp:${spotifyRawId}`
+        : fav.track_id;
+
+    return toPlayableTrack({
+      id: normalizedStoredId,
+      title: fav.title,
+      artist: fav.artist,
+      thumbnailUrl: fav.thumbnail_url,
+      audioUrl: spotify ? `spotify:track:${spotifyRawId}` : undefined,
+      source: spotify ? "spotify" : parsed.source ?? undefined,
+      sourceType: spotify ? "remote" : undefined,
+    });
+  };
+
+  useEffect(() => {
+    if (!playlistTracks || playlistTracks.length === 0) return;
+
+    setPlaylistTracks((prev) => {
+      if (!prev || prev.length === 0) return prev;
+
+      let changed = false;
+      const next = prev.map((track) => {
+        const playable = mapPlaylistTrackToITrack(track);
+        const hasEnrichedPayload =
+          playable.audioUrl !== undefined ||
+          playable.objectUrl !== undefined ||
+          playable.source !== undefined ||
+          playable.sourceType !== undefined;
+
+        if (!hasEnrichedPayload) {
+          return track;
+        }
+
+        const nextTrackId = toTrackStorageId(playable);
+        const sameId = nextTrackId === track.track_id;
+        if (sameId) {
+          return track;
+        }
+
+        changed = true;
+        return {
+          ...track,
+          track_id: nextTrackId,
+        };
+      });
+
+      return changed ? next : prev;
+    });
+  }, [playlistTracks]);
 
   const handlePlayPlaylistTrack = async (playlistTrack: PlaylistTrack) => {
     if (!playlistTracks || playlistTracks.length === 0) return;
     const tracks = playlistTracks.map(mapPlaylistTrackToITrack);
+    tracks.forEach((track) => rememberTrackPayload(track));
     const target = tracks.find((t) => t.queueItemId === playlistTrack.id);
-    if (!ensureSpotifyPlaybackAllowed(target)) return;
+    if (!target) return;
+
     actions.setQueue(tracks);
-    setActiveView("home");
-    try {
-      await actions.playByQueueItemId(playlistTrack.id);
-    } catch (err) {
-      handlePlaybackError(err, target);
+
+    const played = await playQueueItemValidated(playlistTrack.id, target);
+    if (played) {
+      setActiveView("home");
     }
   };
 
   const handlePlayEntirePlaylist = async () => {
     if (!playlistTracks || playlistTracks.length === 0) return;
     const tracks = playlistTracks.map(mapPlaylistTrackToITrack);
-    if (!ensureSpotifyPlaybackAllowed(tracks[0])) return;
+    tracks.forEach((track) => rememberTrackPayload(track));
+    const firstTrack = tracks[0];
+    if (!firstTrack) return;
+
+    const firstQueueItemId = firstTrack.queueItemId ?? firstTrack.id;
     actions.setQueue(tracks);
-    setActiveView("home");
-    try {
-      await actions.play();
-    } catch (err) {
-      handlePlaybackError(err, tracks[0]);
+
+    const played = await playQueueItemValidated(firstQueueItemId, firstTrack);
+    if (played) {
+      setActiveView("home");
     }
   };
 
@@ -458,7 +596,7 @@ export function PlayerShell() {
 
     try {
       await addTrackToPlaylist(selectedPlaylistId, {
-        track_id: currentTrack.id,
+        track_id: toTrackStorageId(currentTrack),
         title: currentTrack.title,
         artist: currentTrack.artist,
         thumbnail_url: currentTrack.thumbnailUrl,
@@ -527,11 +665,8 @@ export function PlayerShell() {
     const first = latest.queue[0];
 
     if (first && !latest.isPlaying) {
-      if (!ensureSpotifyPlaybackAllowed(first)) return;
       const queueItemId = first.queueItemId ?? first.id;
-      void actions.playByQueueItemId(queueItemId).catch((err) => {
-        handlePlaybackError(err, first);
-      });
+      void playQueueItemValidated(queueItemId, first);
     }
   };
 
@@ -864,10 +999,7 @@ export function PlayerShell() {
                       const selected = queue.find(
                         (track) => (track.queueItemId ?? track.id) === queueItemId,
                       );
-                      if (!ensureSpotifyPlaybackAllowed(selected)) return;
-                      void actions.playByQueueItemId(queueItemId).catch((err) => {
-                        handlePlaybackError(err, selected);
-                      });
+                      void playQueueItemValidated(queueItemId, selected);
                     }}
                     onRemoveTrack={(queueItemId) => {
                       actions.removeTrack(queueItemId, "queueItemId");
@@ -880,12 +1012,13 @@ export function PlayerShell() {
                         return;
                       }
 
-                      const favorite = isFavorite(track.id);
+                      const trackId = toTrackStorageId(track);
+                      const favorite = isFavorite(trackId);
                       if (favorite) {
-                        await removeFavorite(track.id);
+                        await removeFavorite(trackId);
                       } else {
                         await addFavorite({
-                          track_id: track.id,
+                          track_id: trackId,
                           title: track.title,
                           artist: track.artist,
                           thumbnail_url: track.thumbnailUrl,
@@ -899,7 +1032,7 @@ export function PlayerShell() {
                       }
 
                       await addTrackToPlaylist(playlistId, {
-                        track_id: track.id,
+                        track_id: toTrackStorageId(track),
                         title: track.title,
                         artist: track.artist,
                         thumbnail_url: track.thumbnailUrl,
@@ -921,23 +1054,21 @@ export function PlayerShell() {
                     authenticated={Boolean(user)}
                     spotifyFavIds={spotifyFavIds}
                     onPlayFavorite={(fav) => {
-                      const trackInQueue = queue.find((t) => t.id === fav.track_id);
+                      const targetId = canonicalTrackIdentity(fav.track_id);
+                      const trackInQueue = queue.find(
+                        (t) => canonicalTrackIdentity(toTrackStorageId(t)) === targetId,
+                      );
                       if (trackInQueue) {
-                        if (!ensureSpotifyPlaybackAllowed(trackInQueue)) return;
                         const queueItemId = trackInQueue.queueItemId ?? trackInQueue.id;
-                        void actions.playByQueueItemId(queueItemId).catch((err) => {
-                          handlePlaybackError(err, trackInQueue);
-                        });
+                        void playQueueItemValidated(queueItemId, trackInQueue);
                         return;
                       }
 
                       const mapped = mapFavoriteToITrack(fav);
-                      if (!ensureSpotifyPlaybackAllowed(mapped)) return;
+                      rememberTrackPayload(mapped);
                       const inserted = actions.addTrack(mapped);
                       const queueItemId = inserted.queueItemId ?? inserted.id;
-                      void actions.playByQueueItemId(queueItemId).catch((err) => {
-                        handlePlaybackError(err, mapped);
-                      });
+                      void playQueueItemValidated(queueItemId, mapped);
                     }}
                     onRemoveFavorite={async (fav) => {
                       if (!user) {
@@ -992,14 +1123,20 @@ export function PlayerShell() {
                         return;
                       }
 
-                      const favorite = isFavorite(track.track_id);
+                      const parsed = parseTrackStorageId(track.track_id);
+                      const normalizedTrackId =
+                        parsed.source === "spotify"
+                          ? `sp:${parsed.rawId}`
+                          : track.track_id;
+
+                      const favorite = isFavorite(normalizedTrackId);
                       if (favorite) {
-                        await removeFavorite(track.track_id);
+                        await removeFavorite(normalizedTrackId);
                         return;
                       }
 
                       await addFavorite({
-                        track_id: track.track_id,
+                        track_id: normalizedTrackId,
                         title: track.title,
                         artist: track.artist,
                         thumbnail_url: track.thumbnail_url,
@@ -1022,8 +1159,9 @@ export function PlayerShell() {
                       const pl = await createPlaylist(name);
                       if (!pl) return;
                       for (const t of tracks) {
+                        rememberTrackPayload(t);
                         await addTrackToPlaylist(pl.id, {
-                          track_id: t.id,
+                          track_id: toTrackStorageId(t),
                           title: t.title,
                           artist: t.artist,
                           thumbnail_url: t.thumbnailUrl,
@@ -1119,7 +1257,6 @@ export function PlayerShell() {
                   disabled={state.loading}
                   onClick={() => {
                     const candidate = getPreviousTrackCandidate();
-                    if (!ensureSpotifyPlaybackAllowed(candidate)) return;
                     void actions.playPrevious().catch((err) => {
                       handlePlaybackError(err, candidate);
                     });
@@ -1166,7 +1303,6 @@ export function PlayerShell() {
                   disabled={state.loading}
                   onClick={() => {
                     const candidate = getNextTrackCandidate();
-                    if (!ensureSpotifyPlaybackAllowed(candidate)) return;
                     void actions.playNext().catch((err) => {
                       handlePlaybackError(err, candidate);
                     });
@@ -1192,12 +1328,22 @@ export function PlayerShell() {
                   onValueChange={([val]) => {
                     setIsSeeking(true);
                     setSeekValue(val);
+                    setDisplayProgress(val);
                   }}
                   onValueCommit={([val]) => {
+                    if (seekSyncUnlockTimeoutRef.current !== null) {
+                      window.clearTimeout(seekSyncUnlockTimeoutRef.current);
+                    }
+                    seekSyncLockRef.current = true;
                     setIsSeeking(false);
-                    setSeekValue(val);
+                    setSeekValue(null);
                     setDisplayProgress(val);
                     actions.seek(val);
+
+                    seekSyncUnlockTimeoutRef.current = window.setTimeout(() => {
+                      seekSyncLockRef.current = false;
+                      setDisplayProgress(actions.getState().progressSeconds);
+                    }, 450);
                   }}
                 />
                 <span className="w-10 text-[10px] text-[var(--muted)]">{formatDuration(state.durationSeconds)}</span>
