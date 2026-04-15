@@ -36,7 +36,7 @@ export interface ITrack {
   objectUrl?: string;
   sourceType?: "local" | "remote";
   /** Fuente lógica del track (opcional, para UI/analytics). */
-  source?: "spotify" | "deezer" | "youtube" | "local";
+  source?: "spotify" | "deezer" | "youtube" | "local" | "jamendo";
 }
 
 export interface PlaybackState {
