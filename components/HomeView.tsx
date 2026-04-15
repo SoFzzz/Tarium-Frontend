@@ -25,12 +25,31 @@ export function HomeView({
     let isMounted = true;
     setLoading(true);
 
+    const wait = (ms: number) =>
+      new Promise((resolve) => {
+        window.setTimeout(resolve, ms);
+      });
+
     async function loadData() {
       try {
         if (session.status === "connected") {
-          const recRes = await fetch("/api/spotify/recommendations", { cache: "no-store" }).then((r) => r.json());
-          const recItems = Array.isArray(recRes) ? recRes : (recRes?.tracks?.items ?? []);
-          if (!recRes.error && isMounted) {
+          let recItems: ITrack[] = [];
+
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            const recRes = await fetch("/api/spotify/recommendations", { cache: "no-store" }).then((r) => r.json());
+            const parsed = Array.isArray(recRes) ? recRes : (recRes?.tracks?.items ?? []);
+            recItems = Array.isArray(parsed) ? (parsed as ITrack[]) : [];
+
+            if (!recRes?.error && recItems.length > 0) {
+              break;
+            }
+
+            if (attempt < 2) {
+              await wait(350 + attempt * 450);
+            }
+          }
+
+          if (isMounted) {
             setRecommendations(recItems);
           }
 
@@ -131,7 +150,15 @@ export function HomeView({
               ))}
             </div>
          </div>
-       )}
+      )}
+
+      {session.status === "connected" && !loading && recommendations.length === 0 && (
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <p className="text-[var(--muted)] max-w-md">
+            No se pudieron cargar recomendaciones de Spotify en este momento.
+          </p>
+        </div>
+      )}
 
       {showJamendo && !loading && jamendoTopTracks.length > 0 && (
         <div className="space-y-4">
