@@ -82,9 +82,19 @@ export function HomeView({
   }, [session.status]);
 
   const handlePlayTrack = async (track: ITrack) => {
+    const isSpotifyTrack =
+      track.source === "spotify" || track.audioUrl?.startsWith("spotify:") === true;
+    if (isSpotifyTrack && session.status !== "connected") {
+      return;
+    }
+
     // Home clicks should always start playback.
     actions.loadQueue([track]);
-    await actions.playById(track.id);
+    try {
+      await actions.play();
+    } catch {
+      // Ignore playback failures to avoid uncaught promise noise.
+    }
   };
 
   const showJamendo = session.status === "disconnected";
