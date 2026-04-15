@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 
 const OAUTH_STATE_COOKIE = "spotify_oauth_state";
 const CODE_VERIFIER_COOKIE = "spotify_code_verifier";
+const CONSUMED_STATE_COOKIE = "spotify_oauth_state_consumed";
 
 const ACCESS_TOKEN_COOKIE = "spotify_access_token";
 const REFRESH_TOKEN_COOKIE = "spotify_refresh_token";
@@ -31,7 +32,9 @@ function redirectHome(request: Request, params?: Record<string, string>): NextRe
       url.searchParams.set(key, value);
     }
   }
-  return NextResponse.redirect(url);
+  const response = NextResponse.redirect(url, { status: 302 });
+  response.headers.set("Cache-Control", "no-store");
+  return response;
 }
 
 export async function GET(request: NextRequest) {
@@ -56,6 +59,11 @@ export async function GET(request: NextRequest) {
   // Read state & code_verifier from cookies
   const storedState = request.cookies.get(OAUTH_STATE_COOKIE)?.value;
   const codeVerifier = request.cookies.get(CODE_VERIFIER_COOKIE)?.value;
+  const consumedState = request.cookies.get(CONSUMED_STATE_COOKIE)?.value;
+
+  if (consumedState && consumedState === state) {
+    return redirectHome(request, { spotify: "connected" });
+  }
 
   if (!storedState || storedState !== state) {
     return redirectHome(request, { spotify: "error", reason: "state_mismatch" });
@@ -126,6 +134,9 @@ export async function GET(request: NextRequest) {
   });
   response.cookies.set(CODE_VERIFIER_COOKIE, "", {
     httpOnly: true, secure: isProd, sameSite: "lax", path: "/", maxAge: 0,
+  });
+  response.cookies.set(CONSUMED_STATE_COOKIE, state, {
+    httpOnly: true, secure: isProd, sameSite: "lax", path: "/", maxAge: 10 * 60,
   });
 
   return response;
