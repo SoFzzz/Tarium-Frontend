@@ -69,6 +69,12 @@ import { SearchView } from "@/components/SearchView";
 
 const QUEUE_BACKUP_KEY = "tarium_queue_backup";
 
+function isTrackValidAcrossSessions(track: ITrack): boolean {
+  if (track.sourceType === "local" || track.source === "local") return false;
+  if (track.objectUrl?.startsWith("blob:")) return false;
+  return true;
+}
+
 const formatDuration = (seconds?: number) => {
   if (seconds === undefined) {
     return "--:--";
@@ -140,7 +146,15 @@ export function PlayerShell() {
   const { state, actions } = usePlayer();
   const { user, signOut } = useAuth();
   const spotifySession = useSpotifySession();
-  const { playlists, createPlaylist, getPlaylistTracks, addTrackToPlaylist, removeTrackFromPlaylist, deletePlaylist } = usePlaylists();
+  const {
+    playlists,
+    createPlaylist,
+    getPlaylistTracks,
+    addTrackToPlaylist,
+    removeTrackFromPlaylist,
+    reorderPlaylistTracks,
+    deletePlaylist,
+  } = usePlaylists();
   const { favorites, addFavorite, removeFavorite, isFavorite, spotifyFavIds } = useFavorites();
 
   // Set estable: evita re-renders de LibraryView por ticks de progreso.
@@ -160,6 +174,7 @@ export function PlayerShell() {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [playlistTracks, setPlaylistTracks] = useState<PlaylistTrack[] | null>(null);
   const [loadingPlaylistTracks, setLoadingPlaylistTracks] = useState(false);
+  const [spotifyPlaybackNotice, setSpotifyPlaybackNotice] = useState<string | null>(null);
   const [isSeeking, setIsSeeking] = useState(false);
 
   useEffect(() => {
@@ -175,14 +190,52 @@ export function PlayerShell() {
   
   const currentTrack = state.currentTrack;
   const queue = state.queue;
-  const currentTrackId = currentTrack?.id ?? null;
+  const currentTrackQueueItemId = currentTrack?.queueItemId ?? null;
   const isCurrentTrackFavorite = currentTrack ? isFavorite(currentTrack.id) : false;
+
+  const isSpotifyTrack = (track: ITrack | null | undefined) =>
+    Boolean(track && (track.source === "spotify" || track.audioUrl?.startsWith("spotify:") === true));
+
+  const ensureSpotifyPlaybackAllowed = (track: ITrack | null | undefined) => {
+    if (!isSpotifyTrack(track)) return true;
+    if (spotifySession.status === "connected") return true;
+    setSpotifyPlaybackNotice("Reconecta Spotify para reproducir esta pista.");
+    return false;
+  };
+
+  const handlePlaybackError = (err: unknown, track: ITrack | null | undefined) => {
+    if (isSpotifyTrack(track)) {
+      setSpotifyPlaybackNotice("Reconecta Spotify para reproducir esta pista.");
+    }
+    console.error("Playback error:", err);
+  };
+
+  const getCurrentIndex = () =>
+    queue.findIndex((item) => (item.queueItemId ?? item.id) === currentTrackQueueItemId);
+
+  const getNextTrackCandidate = (): ITrack | null => {
+    const idx = getCurrentIndex();
+    if (idx < 0) return queue[0] ?? null;
+    return queue[idx + 1] ?? null;
+  };
+
+  const getPreviousTrackCandidate = (): ITrack | null => {
+    const idx = getCurrentIndex();
+    if (idx <= 0) return queue[0] ?? null;
+    return queue[idx - 1] ?? null;
+  };
 
   useEffect(() => {
     if (user) {
       setAuthModalOpen(false);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (spotifySession.status === "connected") {
+      setSpotifyPlaybackNotice(null);
+    }
+  }, [spotifySession.status]);
 
   useEffect(() => {
     if (restoredQueueRef.current) return;
@@ -200,7 +253,10 @@ export function PlayerShell() {
 
       const restored = JSON.parse(backup) as ITrack[];
       if (Array.isArray(restored) && restored.length > 0) {
-        actions.loadQueue(restored);
+        const safeRestored = restored.filter(isTrackValidAcrossSessions);
+        if (safeRestored.length > 0) {
+          actions.loadQueue(safeRestored);
+        }
       }
       localStorage.removeItem(QUEUE_BACKUP_KEY);
       restoredQueueRef.current = true;
@@ -215,7 +271,7 @@ export function PlayerShell() {
     setIsSeeking(false);
     setSeekValue(null);
     setDisplayProgress(0);
-  }, [currentTrackId]);
+  }, [currentTrackQueueItemId]);
 
   // Barra de progreso más fluida: interpolamos visualmente con RAF.
   // Mantenemos el valor real (state.progressSeconds) como fuente de verdad para sincronización.
@@ -261,9 +317,9 @@ export function PlayerShell() {
       return;
     }
 
-    for (const track of mapped) {
+    mapped.forEach((track) => {
       actions.addTrack(track);
-    }
+    });
   };
 
   const handleAddToFavorites = async () => {
@@ -336,6 +392,7 @@ export function PlayerShell() {
   };
 
   const mapPlaylistTrackToITrack = (track: PlaylistTrack): ITrack => ({
+    queueItemId: track.id,
     id: track.track_id,
     title: track.title,
     artist: track.artist,
@@ -367,17 +424,28 @@ export function PlayerShell() {
   const handlePlayPlaylistTrack = async (playlistTrack: PlaylistTrack) => {
     if (!playlistTracks || playlistTracks.length === 0) return;
     const tracks = playlistTracks.map(mapPlaylistTrackToITrack);
+    const target = tracks.find((t) => t.queueItemId === playlistTrack.id);
+    if (!ensureSpotifyPlaybackAllowed(target)) return;
     actions.setQueue(tracks);
     setActiveView("home");
-    await actions.playById(playlistTrack.track_id);
+    try {
+      await actions.playByQueueItemId(playlistTrack.id);
+    } catch (err) {
+      handlePlaybackError(err, target);
+    }
   };
 
   const handlePlayEntirePlaylist = async () => {
     if (!playlistTracks || playlistTracks.length === 0) return;
     const tracks = playlistTracks.map(mapPlaylistTrackToITrack);
+    if (!ensureSpotifyPlaybackAllowed(tracks[0])) return;
     actions.setQueue(tracks);
     setActiveView("home");
-    await actions.play();
+    try {
+      await actions.play();
+    } catch (err) {
+      handlePlaybackError(err, tracks[0]);
+    }
   };
 
   const handleAddCurrentTrackToPlaylist = async () => {
@@ -406,9 +474,9 @@ export function PlayerShell() {
   const handleRemoveTrackFromPlaylist = async (track: PlaylistTrack) => {
     if (!selectedPlaylistId) return;
     try {
-      await removeTrackFromPlaylist(selectedPlaylistId, track.track_id);
+      await removeTrackFromPlaylist(selectedPlaylistId, track.id);
       setPlaylistTracks((prev) =>
-        prev ? prev.filter((t) => t.track_id !== track.track_id) : prev,
+        prev ? prev.filter((t) => t.id !== track.id) : prev,
       );
     } catch (err) {
       console.error("Error removing track from playlist:", err);
@@ -459,15 +527,21 @@ export function PlayerShell() {
     const first = latest.queue[0];
 
     if (first && !latest.isPlaying) {
-      void actions.playById(first.id);
+      if (!ensureSpotifyPlaybackAllowed(first)) return;
+      const queueItemId = first.queueItemId ?? first.id;
+      void actions.playByQueueItemId(queueItemId).catch((err) => {
+        handlePlaybackError(err, first);
+      });
     }
   };
 
   const handleSpotifyLogin = () => {
     try {
-      const currentQueue = actions.getState().queue;
+      const currentQueue = actions.getState().queue.filter(isTrackValidAcrossSessions);
       if (currentQueue.length > 0) {
         localStorage.setItem(QUEUE_BACKUP_KEY, JSON.stringify(currentQueue));
+      } else {
+        localStorage.removeItem(QUEUE_BACKUP_KEY);
       }
     } catch (err) {
       console.warn("No se pudo respaldar la cola antes del login Spotify", err);
@@ -476,9 +550,6 @@ export function PlayerShell() {
   };
 
   const handleSpotifyLogout = async () => {
-    const isSpotifyTrack = (track: ITrack) =>
-      track.source === "spotify" || track.audioUrl?.startsWith("spotify:") === true;
-
     let logoutSucceeded = false;
 
     try {
@@ -502,7 +573,7 @@ export function PlayerShell() {
           .map((track) => track.id);
 
         for (const trackId of spotifyTrackIds) {
-          actions.removeTrack(trackId);
+          actions.removeTrack(trackId, "trackId");
         }
       }
 
@@ -649,6 +720,12 @@ export function PlayerShell() {
             </div>
           </header>
 
+          {spotifyPlaybackNotice ? (
+            <div className="mx-4 mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 sm:mx-6">
+              {spotifyPlaybackNotice}
+            </div>
+          ) : null}
+
           {/* Área principal */}
           <div className="flex flex-1 flex-col gap-4 bg-[var(--background)] px-4 pt-4 pb-32 sm:px-6 sm:pb-24">
             <div className="grid gap-4 grid-cols-1">
@@ -778,14 +855,22 @@ export function PlayerShell() {
                 {activeView === "library" && (
                   <LibraryView
                     queue={queue}
-                    currentTrackId={currentTrackId}
+                    currentTrackQueueItemId={currentTrackQueueItemId}
                     authenticated={Boolean(user)}
                     favoritedIds={favoritedIds}
                     playlists={playlists}
                     onReorder={(newQueue) => actions.setQueue(newQueue)}
-                    onPlayTrack={(id) => void actions.playById(id)}
-                    onRemoveTrack={(id) => {
-                      actions.removeTrack(id);
+                    onPlayTrack={(queueItemId) => {
+                      const selected = queue.find(
+                        (track) => (track.queueItemId ?? track.id) === queueItemId,
+                      );
+                      if (!ensureSpotifyPlaybackAllowed(selected)) return;
+                      void actions.playByQueueItemId(queueItemId).catch((err) => {
+                        handlePlaybackError(err, selected);
+                      });
+                    }}
+                    onRemoveTrack={(queueItemId) => {
+                      actions.removeTrack(queueItemId, "queueItemId");
                     }}
                     onToggleFavorite={async (track) => {
                       if (!track) return;
@@ -838,13 +923,21 @@ export function PlayerShell() {
                     onPlayFavorite={(fav) => {
                       const trackInQueue = queue.find((t) => t.id === fav.track_id);
                       if (trackInQueue) {
-                        void actions.playById(trackInQueue.id);
+                        if (!ensureSpotifyPlaybackAllowed(trackInQueue)) return;
+                        const queueItemId = trackInQueue.queueItemId ?? trackInQueue.id;
+                        void actions.playByQueueItemId(queueItemId).catch((err) => {
+                          handlePlaybackError(err, trackInQueue);
+                        });
                         return;
                       }
 
                       const mapped = mapFavoriteToITrack(fav);
-                      actions.addTrack(mapped);
-                      void actions.playById(mapped.id);
+                      if (!ensureSpotifyPlaybackAllowed(mapped)) return;
+                      const inserted = actions.addTrack(mapped);
+                      const queueItemId = inserted.queueItemId ?? inserted.id;
+                      void actions.playByQueueItemId(queueItemId).catch((err) => {
+                        handlePlaybackError(err, mapped);
+                      });
                     }}
                     onRemoveFavorite={async (fav) => {
                       if (!user) {
@@ -915,6 +1008,10 @@ export function PlayerShell() {
                     onReorderTracks={(playlistId, newTracks) => {
                       if (selectedPlaylistId !== playlistId) return;
                       setPlaylistTracks(newTracks);
+                      void reorderPlaylistTracks(
+                        playlistId,
+                        newTracks.map((track) => track.id),
+                      );
                     }}
                     spotifyConnected={spotifySession.status === "connected"}
                     onImportSpotifyPlaylist={async (name, tracks) => {
@@ -1020,7 +1117,13 @@ export function PlayerShell() {
                   variant="ghost"
                   size="icon"
                   disabled={state.loading}
-                  onClick={() => void actions.playPrevious()}
+                  onClick={() => {
+                    const candidate = getPreviousTrackCandidate();
+                    if (!ensureSpotifyPlaybackAllowed(candidate)) return;
+                    void actions.playPrevious().catch((err) => {
+                      handlePlaybackError(err, candidate);
+                    });
+                  }}
                   className="text-[var(--foreground)]"
                 >
                   <SkipBack size={18} />
@@ -1029,7 +1132,12 @@ export function PlayerShell() {
                   size="lg"
                   className="h-12 w-12 shrink-0 rounded-full px-0 leading-none bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] hover:text-white active:bg-[var(--accent-active)] sm:h-10 sm:min-w-24 sm:px-5"
                   disabled={state.loading || !currentTrack}
-                  onClick={() => void actions.togglePlayPause()}
+                  onClick={() => {
+                    if (!state.isPlaying && !ensureSpotifyPlaybackAllowed(currentTrack)) return;
+                    void actions.togglePlayPause().catch((err) => {
+                      handlePlaybackError(err, currentTrack);
+                    });
+                  }}
                 >
                   {state.loading ? "Cargando" : state.isPlaying ? <Pause size={18} /> : <Play size={18} />}
                 </Button>
@@ -1056,7 +1164,13 @@ export function PlayerShell() {
                   variant="ghost"
                   size="icon"
                   disabled={state.loading}
-                  onClick={() => void actions.playNext()}
+                  onClick={() => {
+                    const candidate = getNextTrackCandidate();
+                    if (!ensureSpotifyPlaybackAllowed(candidate)) return;
+                    void actions.playNext().catch((err) => {
+                      handlePlaybackError(err, candidate);
+                    });
+                  }}
                   className="text-[var(--foreground)]"
                 >
                   <SkipForward size={18} />
