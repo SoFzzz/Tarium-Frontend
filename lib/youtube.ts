@@ -26,13 +26,34 @@ export async function searchYouTube(query: string): Promise<YouTubeSearchResult[
     const data = await safeJson(res);
     if (!Array.isArray(data)) return [];
 
-    return data.map((item: any): YouTubeSearchResult => ({
-      youtubeId: item.youtubeId ?? item.id ?? "",
-      title: item.title ?? "",
-      artistOrChannel: item.artistOrChannel ?? item.channelTitle ?? "",
-      thumbnailUrl: item.thumbnailUrl ?? item.thumbnail_url ?? "",
-      durationSeconds: item.durationSeconds ?? item.duration ?? undefined,
-    }));
+    return data.map((item: unknown): YouTubeSearchResult => {
+      const obj = (item && typeof item === "object" ? (item as Record<string, unknown>) : {}) as Record<
+        string,
+        unknown
+      >;
+      const youtubeId =
+        (typeof obj.youtubeId === "string" && obj.youtubeId) ||
+        (typeof obj.id === "string" && obj.id) ||
+        "";
+      const title = (typeof obj.title === "string" ? obj.title : "") || "";
+      const artistOrChannel =
+        (typeof obj.artistOrChannel === "string" && obj.artistOrChannel) ||
+        (typeof obj.channelTitle === "string" && obj.channelTitle) ||
+        "";
+      const thumbnailUrl =
+        (typeof obj.thumbnailUrl === "string" && obj.thumbnailUrl) ||
+        (typeof obj.thumbnail_url === "string" && obj.thumbnail_url) ||
+        "";
+
+      const durationSeconds =
+        typeof obj.durationSeconds === "number"
+          ? obj.durationSeconds
+          : typeof obj.duration === "number"
+            ? obj.duration
+            : undefined;
+
+      return { youtubeId, title, artistOrChannel, thumbnailUrl, durationSeconds };
+    });
   } catch (error) {
     console.error("YouTube search error", error);
     return [];
