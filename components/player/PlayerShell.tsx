@@ -341,6 +341,20 @@ export function PlayerShell() {
     artist: track.artist,
     thumbnailUrl: track.thumbnail_url,
     durationInSeconds: track.duration_seconds,
+    audioUrl:
+      track.track_id.startsWith("spotify:track:")
+        ? track.track_id
+        : /^[A-Za-z0-9]{22}$/.test(track.track_id)
+          ? `spotify:track:${track.track_id}`
+          : undefined,
+    source:
+      track.track_id.startsWith("spotify:track:") || /^[A-Za-z0-9]{22}$/.test(track.track_id)
+        ? "spotify"
+        : undefined,
+    sourceType:
+      track.track_id.startsWith("spotify:track:") || /^[A-Za-z0-9]{22}$/.test(track.track_id)
+        ? "remote"
+        : undefined,
   });
 
   const mapFavoriteToITrack = (fav: Favorite): ITrack => ({
@@ -1117,6 +1131,8 @@ export function PlayerShell() {
             <Dialog.Title className="text-sm font-semibold text-[var(--foreground)]">Nueva playlist</Dialog.Title>
             <Dialog.Description className="sr-only">Crea una nueva playlist</Dialog.Description>
             <input
+              id="playlist-name"
+              name="playlist-name"
               value={createPlaylistName}
               onChange={(e) => setCreatePlaylistName(e.target.value)}
               maxLength={50}
