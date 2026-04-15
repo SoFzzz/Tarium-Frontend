@@ -17,6 +17,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const CLEAR_QUEUE_EVENT = "tarium:clear-queue";
+const SPOTIFY_AUTH_REQUIRED_EVENT = "tarium:spotify-auth-required";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -134,6 +135,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+
+      await fetch('/api/spotify/logout', {
+        method: 'POST',
+        credentials: 'include',
+      }).catch(() => null);
+
+      setSession(null);
+      setUser(null);
+      window.dispatchEvent(new Event(CLEAR_QUEUE_EVENT));
+      window.dispatchEvent(new Event(SPOTIFY_AUTH_REQUIRED_EVENT));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error al cerrar sesión';
       setError(message);
