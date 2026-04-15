@@ -462,9 +462,36 @@ export function PlayerShell() {
   };
 
   const handleSpotifyLogout = async () => {
+    const isSpotifyTrack = (track: ITrack) =>
+      track.source === "spotify" || track.audioUrl?.startsWith("spotify:") === true;
+
+    let logoutSucceeded = false;
+
     try {
-      await fetch("/api/spotify/logout", { method: "POST" });
+      const response = await fetch("/api/spotify/logout", { method: "POST" });
+      logoutSucceeded = response.ok;
     } finally {
+      if (logoutSucceeded) {
+        const currentSnapshot = actions.getState();
+        const currentTrack = currentSnapshot.currentTrack;
+
+        if (currentTrack && isSpotifyTrack(currentTrack)) {
+          try {
+            await actions.pause();
+          } catch {
+            // ignore
+          }
+        }
+
+        const spotifyTrackIds = currentSnapshot.queue
+          .filter(isSpotifyTrack)
+          .map((track) => track.id);
+
+        for (const trackId of spotifyTrackIds) {
+          actions.removeTrack(trackId);
+        }
+      }
+
       // Refresh local session view even if request fails.
       await spotifySession.refresh();
     }
