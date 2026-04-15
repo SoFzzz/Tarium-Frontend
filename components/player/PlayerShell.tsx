@@ -1065,12 +1065,6 @@ export function PlayerShell() {
                 }}
                 className="w-24"
               />
-              <div className="hidden flex-col items-end text-xs text-[var(--muted)] md:flex">
-                <span>
-                  {formatDuration(isSeeking ? (seekValue ?? displayProgress) : displayProgress)}
-                </span>
-                <span>{formatDuration(state.durationSeconds)}</span>
-              </div>
             </div>
           </footer>
         </section>
