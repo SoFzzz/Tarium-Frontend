@@ -39,8 +39,8 @@ type SpotifyPlayer = {
 
   getCurrentState: () => Promise<SpotifyPlaybackState | null>;
 
-  addListener: (event: string, cb: (...args: any[]) => void) => boolean;
-  removeListener: (event: string, cb?: (...args: any[]) => void) => boolean;
+  addListener: (event: string, cb: (...args: unknown[]) => void) => boolean;
+  removeListener: (event: string, cb?: (...args: unknown[]) => void) => boolean;
 };
 
 async function defaultGetAccessToken(): Promise<string> {
@@ -74,7 +74,7 @@ export class SpotifyAudioAdapter implements MediaAdapter {
   private timeUpdateHandler:
     | ((positionSeconds: number, durationSeconds: number) => void)
     | null = null;
-  private pollIntervalId: number | null = null;
+  private pollTimeoutId: number | null = null;
 
   private readyPromise: Promise<void> | null = null;
   private getAccessToken: () => Promise<string>;
@@ -136,6 +136,9 @@ export class SpotifyAudioAdapter implements MediaAdapter {
   public async pause(): Promise<void> {
     await this.ensurePlayer();
     await this.player?.pause();
+    this.lastPaused = true;
+    // When paused, avoid keeping a tight polling loop alive.
+    this.stopPolling();
   }
 
   public setVolume(volume: number): void {
@@ -237,24 +240,46 @@ export class SpotifyAudioAdapter implements MediaAdapter {
     if (!this.player) return;
     if (!this.timeUpdateHandler && !this.endedHandler) return;
 
-    if (this.pollIntervalId !== null) return;
-
-    this.pollIntervalId = window.setInterval(() => {
-      void this.pollOnce();
-    }, 500);
+    if (this.pollTimeoutId !== null) return;
+    this.scheduleNextPoll(0);
   }
 
   private stopPolling(): void {
-    if (this.pollIntervalId !== null) {
-      window.clearInterval(this.pollIntervalId);
-      this.pollIntervalId = null;
+    if (this.pollTimeoutId !== null) {
+      window.clearTimeout(this.pollTimeoutId);
+      this.pollTimeoutId = null;
     }
   }
 
-  private async pollOnce(): Promise<void> {
+  private scheduleNextPoll(delayMs: number): void {
+    if (this.pollTimeoutId !== null) return;
+    this.pollTimeoutId = window.setTimeout(() => {
+      this.pollTimeoutId = null;
+      void this.pollLoop();
+    }, delayMs);
+  }
+
+  private async pollLoop(): Promise<void> {
     if (!this.player) return;
+    if (!this.timeUpdateHandler && !this.endedHandler) return;
+
+    let paused = this.lastPaused === true;
+    try {
+      paused = await this.pollOnce();
+    } catch {
+      // Best-effort: if polling fails transiently, slow down.
+      this.scheduleNextPoll(1500);
+      return;
+    }
+
+    // If paused, poll less frequently to reduce load.
+    this.scheduleNextPoll(paused ? 1500 : 500);
+  }
+
+  private async pollOnce(): Promise<boolean> {
+    if (!this.player) return true;
     const state = await this.player.getCurrentState();
-    if (!state) return;
+    if (!state) return this.lastPaused === true;
 
     const positionSeconds = Math.max(0, Math.floor(state.position / 1000));
     const durationSeconds = Math.max(0, Math.floor(state.duration / 1000));
@@ -291,6 +316,8 @@ export class SpotifyAudioAdapter implements MediaAdapter {
       this.stopPolling();
       this.endedHandler?.();
     }
+
+    return state.paused;
   }
   public async destroy(): Promise<void> {
     this.stopPolling();
