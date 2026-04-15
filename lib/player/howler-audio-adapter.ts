@@ -58,14 +58,9 @@ export class HowlerAudioAdapter implements MediaAdapter {
       throw new Error("Track sin fuente de audio.");
     }
 
-    if (src.startsWith("blob:")) {
-      try {
-        const response = await fetch(src, { method: "HEAD" });
-        if (!response.ok) {
-          throw new Error("Blob no accesible.");
-        }
-      } catch {
-        throw new Error("El archivo local ya no esta disponible.");
+    if (track.source === "local" || track.sourceType === "local") {
+      if (!src.startsWith("blob:")) {
+        throw new Error("El archivo local no tiene una URL valida.");
       }
     }
 

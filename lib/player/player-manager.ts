@@ -200,10 +200,20 @@ export class PlayerManager {
     try {
       await this.mediaAdapter?.play(currentTrack);
       this.isPlaying = true;
-    } catch {
+    } catch (error) {
       this.isPlaying = false;
-      this.error = "No se pudo reproducir el track seleccionado.";
-      throw new Error(this.error);
+      const message = error instanceof Error ? error.message : "";
+      if (
+        currentTrack.source === "local" ||
+        currentTrack.sourceType === "local" ||
+        message.includes("archivo local") ||
+        message.includes("blob")
+      ) {
+        this.error = "No se pudo reproducir este archivo local. Vuelve a importarlo.";
+      } else {
+        this.error = "No se pudo reproducir el track seleccionado.";
+      }
+      return;
     } finally {
       this.loading = false;
       this.notify();
@@ -220,7 +230,7 @@ export class PlayerManager {
       this.error = null;
     } catch {
       this.error = "No se pudo pausar la reproduccion.";
-      throw new Error(this.error);
+      return;
     } finally {
       this.loading = false;
       this.notify();
@@ -264,13 +274,15 @@ export class PlayerManager {
     try {
       await this.play();
     } catch {
-      if (previous?.queueItemId) {
-        this.playlist.setCurrentById(previous.queueItemId);
-      }
+      // play() ya no lanza para errores esperables.
+    }
+
+    if (this.error && previous?.queueItemId) {
+      this.playlist.setCurrentById(previous.queueItemId);
       this.progressSeconds = 0;
       this.durationSeconds = 0;
       this.notify();
-      throw new Error("No se pudo reproducir el track seleccionado.");
+      return null;
     }
 
     return track;
@@ -291,13 +303,15 @@ export class PlayerManager {
     try {
       await this.play();
     } catch {
-      if (previous?.queueItemId) {
-        this.playlist.setCurrentById(previous.queueItemId);
-      }
+      // play() ya no lanza para errores esperables.
+    }
+
+    if (this.error && previous?.queueItemId) {
+      this.playlist.setCurrentById(previous.queueItemId);
       this.progressSeconds = 0;
       this.durationSeconds = 0;
       this.notify();
-      throw new Error("No se pudo reproducir el track seleccionado.");
+      return null;
     }
 
     return track;
@@ -317,13 +331,15 @@ export class PlayerManager {
     try {
       await this.play();
     } catch {
-      if (previous?.queueItemId) {
-        this.playlist.setCurrentById(previous.queueItemId);
-      }
+      // play() ya no lanza para errores esperables.
+    }
+
+    if (this.error && previous?.queueItemId) {
+      this.playlist.setCurrentById(previous.queueItemId);
       this.progressSeconds = 0;
       this.durationSeconds = 0;
       this.notify();
-      throw new Error("No se pudo reproducir el siguiente track.");
+      return null;
     }
 
     return track;
@@ -343,13 +359,15 @@ export class PlayerManager {
     try {
       await this.play();
     } catch {
-      if (previous?.queueItemId) {
-        this.playlist.setCurrentById(previous.queueItemId);
-      }
+      // play() ya no lanza para errores esperables.
+    }
+
+    if (this.error && previous?.queueItemId) {
+      this.playlist.setCurrentById(previous.queueItemId);
       this.progressSeconds = 0;
       this.durationSeconds = 0;
       this.notify();
-      throw new Error("No se pudo reproducir el track anterior.");
+      return null;
     }
 
     return track;
