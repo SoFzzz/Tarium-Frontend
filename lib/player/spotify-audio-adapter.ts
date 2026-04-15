@@ -202,15 +202,26 @@ export class SpotifyAudioAdapter implements MediaAdapter {
       volume: 0.72,
     });
 
-    player.addListener("ready", ({ device_id }: { device_id: string }) => {
-      this.deviceId = device_id;
+    player.addListener("ready", (payload: unknown) => {
+      const deviceId =
+        payload && typeof payload === "object"
+          ? (payload as { device_id?: unknown }).device_id
+          : null;
+      if (typeof deviceId === "string") {
+        this.deviceId = deviceId;
+      }
     });
     player.addListener("not_ready", () => {
       this.deviceId = null;
     });
 
-    const logError = (label: string) => (e: SpotifyError) =>
-      console.error(`Spotify SDK ${label}:`, e?.message ?? e);
+    const logError = (label: string) => (e: unknown) => {
+      const msg =
+        e && typeof e === "object" && "message" in e
+          ? String((e as SpotifyError).message)
+          : String(e);
+      console.error(`Spotify SDK ${label}:`, msg);
+    };
     player.addListener("initialization_error", logError("initialization_error"));
     player.addListener("authentication_error", logError("authentication_error"));
     player.addListener("account_error", logError("account_error"));
@@ -295,7 +306,7 @@ export class SpotifyAudioAdapter implements MediaAdapter {
       this.hadProgressSincePlay = false;
       this.lastPositionMs = 0;
       this.lastPaused = state.paused;
-      return;
+      return state.paused;
     }
 
     if (state.position > 1000) {
