@@ -107,12 +107,26 @@ export function ArtistsView({
   const handlePlayAll = () => {
     if (topTracks.length > 0) {
       actions.setQueue(topTracks);
+      void actions.play().catch(() => {
+        // Ignore playback failures to avoid uncaught promise noise.
+      });
     }
   };
 
   const handlePlayTrack = async (track: ITrack) => {
-    actions.addTrackNext(track);
-    await actions.playById(track.id);
+    const isSpotifyTrack =
+      track.source === "spotify" || track.audioUrl?.startsWith("spotify:") === true;
+    if (isSpotifyTrack && !spotifyConnected) {
+      return;
+    }
+
+    const inserted = actions.addTrackNext(track);
+    const queueItemId = inserted.queueItemId ?? inserted.id;
+    try {
+      await actions.playByQueueItemId(queueItemId);
+    } catch {
+      // Ignore playback failures to avoid uncaught promise noise.
+    }
   };
 
   // --- GRID VIEW ---
