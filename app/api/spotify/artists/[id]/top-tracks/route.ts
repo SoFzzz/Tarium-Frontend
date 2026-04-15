@@ -3,6 +3,14 @@ import { getValidToken, getClientCredentialsToken, applyRefreshedCookies } from 
 
 export const runtime = "nodejs";
 
+type SpotifyArtistTopTrack = {
+  id?: unknown;
+  name?: unknown;
+  duration_ms?: unknown;
+  artists?: unknown;
+  album?: unknown;
+};
+
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: artistId } = await params;
@@ -19,15 +27,38 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     if (!res.ok) throw new Error(`Spotify ${res.status}`);
     const data = await res.json();
 
-    const tracks = (data.tracks || []).map((t: any) => ({
-      id: t.id,
-      title: t.name,
-      artist: t.artists?.map((a: any) => a.name).join(", ") || "Artista desconocido",
-      thumbnailUrl: t.album?.images?.[0]?.url || "/placeholder.png",
-      durationInSeconds: Math.round((t.duration_ms || 0) / 1000),
-      audioUrl: `spotify:track:${t.id}`,
-      source: "spotify",
-    }));
+    const rawTracks = Array.isArray(data.tracks) ? (data.tracks as SpotifyArtistTopTrack[]) : [];
+    const tracks = rawTracks
+      .map((t) => {
+        if (!t || typeof t !== "object") return null;
+        if (!t.id) return null;
+
+        const artists = Array.isArray(t.artists) ? (t.artists as unknown[]) : [];
+        const artist = artists
+          .map((a) => {
+            if (!a || typeof a !== "object") return null;
+            const name = (a as { name?: unknown }).name;
+            return typeof name === "string" ? name : null;
+          })
+          .filter((name): name is string => Boolean(name))
+          .join(", ");
+
+        const albumObj = t.album && typeof t.album === "object" ? (t.album as Record<string, unknown>) : null;
+        const images = albumObj && Array.isArray(albumObj.images) ? (albumObj.images as unknown[]) : [];
+        const firstImage = images[0] && typeof images[0] === "object" ? (images[0] as Record<string, unknown>) : null;
+        const thumbnailUrl = (firstImage && typeof firstImage.url === "string" ? firstImage.url : "") || "/placeholder.png";
+
+        return {
+          id: String(t.id),
+          title: typeof t.name === "string" ? t.name : String(t.name ?? ""),
+          artist: artist || "Artista desconocido",
+          thumbnailUrl,
+          durationInSeconds: typeof t.duration_ms === "number" ? Math.round(t.duration_ms / 1000) : 0,
+          audioUrl: `spotify:track:${String(t.id)}`,
+          source: "spotify" as const,
+        };
+      })
+      .filter(Boolean);
 
     const response = NextResponse.json(tracks);
     applyRefreshedCookies(response, result?.refreshed ?? null);
