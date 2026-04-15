@@ -19,6 +19,11 @@ export interface LocalTrack {
 // ITrack se mantiene como tipo que usa el reproductor/cola.
 // Para tracks locales, se rellenan los campos desde LocalTrack.
 export interface ITrack {
+  /**
+   * Identidad unica de la instancia dentro de una cola.
+   * Permite repetir la misma cancion varias veces sin colisiones de UI/DnD.
+   */
+  queueItemId?: string;
   id: string;
   title: string;
   artist: string;
