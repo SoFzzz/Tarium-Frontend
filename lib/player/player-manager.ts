@@ -15,9 +15,11 @@ export class PlayerManager {
   private progressSeconds = 0;
   private durationSeconds = 0;
   private repeatMode: RepeatMode = "off";
+  private error: string | null = null;
+  private queueItemIdCounter = 0;
 
   constructor(initialTracks: ITrack[] = [], mediaAdapter: MediaAdapter | null = null) {
-    this.playlist = new DoublyLinkedList<ITrack>((track) => track.id);
+    this.playlist = new DoublyLinkedList<ITrack>((track) => this.getQueueItemId(track));
     this.mediaAdapter = mediaAdapter;
     this.snapshot = this.buildSnapshot();
 
@@ -44,19 +46,20 @@ export class PlayerManager {
     this.playlist.clear();
 
     for (const track of tracks) {
-      this.playlist.insertAtEnd(track);
+      this.playlist.insertAtEnd(this.ensureQueueIdentity(track));
     }
 
     this.isPlaying = false;
     this.loading = false;
     this.progressSeconds = 0;
     this.durationSeconds = 0;
+    this.error = null;
     this.notify();
   }
 
   /** Reemplaza por completo la cola actual con la nueva lista. */
   public setQueue(tracks: ITrack[]): void {
-    const currentId = this.playlist.getCurrent()?.id ?? null;
+    const currentQueueItemId = this.playlist.getCurrent()?.queueItemId ?? null;
     const wasPlaying = this.isPlaying;
     const wasLoading = this.loading;
     const prevProgressSeconds = this.progressSeconds;
@@ -65,12 +68,12 @@ export class PlayerManager {
     this.playlist.clear();
 
     for (const track of tracks) {
-      this.playlist.insertAtEnd(track);
+      this.playlist.insertAtEnd(this.ensureQueueIdentity(track));
     }
 
     // Si habia un track actual, mantenerlo como current para no romper la reproduccion en curso.
-    if (currentId) {
-      this.playlist.setCurrentById(currentId);
+    if (currentQueueItemId) {
+      this.playlist.setCurrentById(currentQueueItemId);
     }
 
     // Reordenar no debe resetear el estado de reproduccion ni el progreso visible.
@@ -78,38 +81,53 @@ export class PlayerManager {
     this.loading = wasLoading;
     this.progressSeconds = prevProgressSeconds;
     this.durationSeconds = prevDurationSeconds;
+    this.error = null;
     this.notify();
   }
 
-  public addTrack(track: ITrack): void {
-    this.playlist.insertAtEnd(track);
+  public addTrack(track: ITrack): ITrack {
+    const withIdentity = this.ensureQueueIdentity(track);
+    this.playlist.insertAtEnd(withIdentity);
+    this.error = null;
     this.notify();
+    return withIdentity;
   }
 
-  public addTrackNext(track: ITrack): void {
+  public addTrackNext(track: ITrack): ITrack {
+    const withIdentity = this.ensureQueueIdentity(track);
     const currentTrack = this.playlist.getCurrent();
 
     if (currentTrack === null) {
-      this.playlist.insertAtStart(track);
+      this.playlist.insertAtStart(withIdentity);
+      this.error = null;
       this.notify();
-      return;
+      return withIdentity;
     }
 
     const queue = this.playlist.toArray();
     const currentIndex = queue.findIndex((item) => item.id === currentTrack.id);
 
     if (currentIndex === -1) {
-      this.playlist.insertAtEnd(track);
+      this.playlist.insertAtEnd(withIdentity);
+      this.error = null;
       this.notify();
-      return;
+      return withIdentity;
     }
 
-    this.playlist.insertAtPosition(currentIndex + 1, track);
+    this.playlist.insertAtPosition(currentIndex + 1, withIdentity);
+    this.error = null;
     this.notify();
+    return withIdentity;
   }
 
-  public removeTrack(id: string): ITrack | null {
-    const removedTrack = this.playlist.removeById(id);
+  public removeTrack(id: string, by: "queueItemId" | "trackId" = "trackId"): ITrack | null {
+    const targetQueueItemId = by === "queueItemId" ? id : this.findQueueItemIdByTrackId(id);
+
+    if (!targetQueueItemId) {
+      return null;
+    }
+
+    const removedTrack = this.playlist.removeById(targetQueueItemId);
 
     if (removedTrack === null) {
       return null;
@@ -119,6 +137,8 @@ export class PlayerManager {
       this.isPlaying = false;
       this.loading = false;
     }
+
+    this.error = null;
 
     this.notify();
     return removedTrack;
@@ -132,11 +152,16 @@ export class PlayerManager {
     }
 
     this.loading = true;
+    this.error = null;
     this.notify();
 
     try {
       await this.mediaAdapter?.play(currentTrack);
       this.isPlaying = true;
+    } catch {
+      this.isPlaying = false;
+      this.error = "No se pudo reproducir el track seleccionado.";
+      throw new Error(this.error);
     } finally {
       this.loading = false;
       this.notify();
@@ -144,10 +169,20 @@ export class PlayerManager {
   }
 
   public async pause(): Promise<void> {
-    await this.mediaAdapter?.pause();
-    this.isPlaying = false;
-    this.loading = false;
+    this.loading = true;
     this.notify();
+
+    try {
+      await this.mediaAdapter?.pause();
+      this.isPlaying = false;
+      this.error = null;
+    } catch {
+      this.error = "No se pudo pausar la reproduccion.";
+      throw new Error(this.error);
+    } finally {
+      this.loading = false;
+      this.notify();
+    }
   }
 
    /** Permite hacer seek en segundos sobre la pista actual. */
@@ -167,7 +202,14 @@ export class PlayerManager {
   }
 
   public async playById(id: string): Promise<ITrack | null> {
-    const track = this.playlist.setCurrentById(id);
+    const previous = this.playlist.getCurrent();
+    const targetQueueItemId = this.findQueueItemIdByTrackId(id);
+
+    if (!targetQueueItemId) {
+      return null;
+    }
+
+    const track = this.playlist.setCurrentById(targetQueueItemId);
 
     if (track === null) {
       return null;
@@ -177,11 +219,50 @@ export class PlayerManager {
     this.durationSeconds = 0;
     this.notify();
 
-    await this.play();
+    try {
+      await this.play();
+    } catch {
+      if (previous?.queueItemId) {
+        this.playlist.setCurrentById(previous.queueItemId);
+      }
+      this.progressSeconds = 0;
+      this.durationSeconds = 0;
+      this.notify();
+      throw new Error("No se pudo reproducir el track seleccionado.");
+    }
+
+    return track;
+  }
+
+  public async playByQueueItemId(queueItemId: string): Promise<ITrack | null> {
+    const previous = this.playlist.getCurrent();
+    const track = this.playlist.setCurrentById(queueItemId);
+
+    if (track === null) {
+      return null;
+    }
+
+    this.progressSeconds = 0;
+    this.durationSeconds = 0;
+    this.notify();
+
+    try {
+      await this.play();
+    } catch {
+      if (previous?.queueItemId) {
+        this.playlist.setCurrentById(previous.queueItemId);
+      }
+      this.progressSeconds = 0;
+      this.durationSeconds = 0;
+      this.notify();
+      throw new Error("No se pudo reproducir el track seleccionado.");
+    }
+
     return track;
   }
 
   public async playNext(): Promise<ITrack | null> {
+    const previous = this.playlist.getCurrent();
     const track = this.playlist.getNext();
 
     if (track === null) {
@@ -191,11 +272,23 @@ export class PlayerManager {
     this.durationSeconds = 0;
     this.notify();
 
-    await this.play();
+    try {
+      await this.play();
+    } catch {
+      if (previous?.queueItemId) {
+        this.playlist.setCurrentById(previous.queueItemId);
+      }
+      this.progressSeconds = 0;
+      this.durationSeconds = 0;
+      this.notify();
+      throw new Error("No se pudo reproducir el siguiente track.");
+    }
+
     return track;
   }
 
   public async playPrevious(): Promise<ITrack | null> {
+    const previous = this.playlist.getCurrent();
     const track = this.playlist.getPrevious();
 
     if (track === null) {
@@ -205,7 +298,18 @@ export class PlayerManager {
     this.durationSeconds = 0;
     this.notify();
 
-    await this.play();
+    try {
+      await this.play();
+    } catch {
+      if (previous?.queueItemId) {
+        this.playlist.setCurrentById(previous.queueItemId);
+      }
+      this.progressSeconds = 0;
+      this.durationSeconds = 0;
+      this.notify();
+      throw new Error("No se pudo reproducir el track anterior.");
+    }
+
     return track;
   }
 
@@ -213,6 +317,7 @@ export class PlayerManager {
     const clampedVolume = Math.max(0, Math.min(100, volume));
     this.volume = clampedVolume;
     this.mediaAdapter?.setVolume(clampedVolume);
+    this.error = null;
     this.notify();
   }
 
@@ -246,9 +351,15 @@ export class PlayerManager {
     }
 
     if (currentTrack !== null) {
-      this.playlist.setCurrentById(currentTrack.id);
+      const currentQueueItemId = currentTrack.queueItemId;
+      if (currentQueueItemId) {
+        this.playlist.setCurrentById(currentQueueItemId);
+      } else {
+        this.playlist.setCurrentById(this.getQueueItemId(currentTrack));
+      }
     }
 
+    this.error = null;
     this.notify();
   }
 
@@ -292,9 +403,32 @@ export class PlayerManager {
       queue: this.playlist.toArray(),
       progressSeconds: this.progressSeconds,
       durationSeconds: this.durationSeconds,
-      error: null,
+      error: this.error,
       canPlay: true,
     };
+  }
+
+  private ensureQueueIdentity(track: ITrack): ITrack {
+    if (track.queueItemId && track.queueItemId.length > 0) {
+      return track;
+    }
+
+    this.queueItemIdCounter += 1;
+    return {
+      ...track,
+      queueItemId: `${track.id}::${this.queueItemIdCounter}`,
+    };
+  }
+
+  private getQueueItemId(track: ITrack): string {
+    return track.queueItemId ?? track.id;
+  }
+
+  private findQueueItemIdByTrackId(trackId: string): string | null {
+    const queue = this.playlist.toArray();
+    const track = queue.find((item) => item.id === trackId);
+    if (!track) return null;
+    return track.queueItemId ?? track.id;
   }
 
   private async handleEnded(): Promise<void> {
@@ -315,7 +449,7 @@ export class PlayerManager {
     if (this.repeatMode === "all" && isLastTrack) {
       const first = queue[0];
       if (!first) return;
-      await this.playById(first.id);
+      await this.playByQueueItemId(first.queueItemId ?? first.id);
       return;
     }
 
