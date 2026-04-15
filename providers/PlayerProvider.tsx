@@ -12,6 +12,27 @@ type PlayerContextValue = ReturnType<typeof usePlayerManager>;
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 const QUEUE_STORAGE_KEY = "tarium.queue";
+const CLEAR_QUEUE_EVENT = "tarium:clear-queue";
+
+function isTrackValidAcrossSessions(track: ITrack): boolean {
+  if (track.sourceType === "local" || track.source === "local") return false;
+  if (track.objectUrl?.startsWith("blob:")) return false;
+  return true;
+}
+
+function shouldPersistTrack(track: ITrack): boolean {
+  return isTrackValidAcrossSessions(track);
+}
+
+function canRestoreTrack(track: ITrack, spotifyConnected: boolean): boolean {
+  if (!isTrackValidAcrossSessions(track)) return false;
+
+  const isSpotifyTrack =
+    track.source === "spotify" || track.audioUrl?.startsWith("spotify:") === true;
+
+  if (isSpotifyTrack && !spotifyConnected) return false;
+  return true;
+}
 
 function safeParseQueue(raw: string | null): ITrack[] {
   if (!raw) return [];
@@ -70,22 +91,64 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const lastQueueSigRef = useRef<string>("");
 
   useEffect(() => {
-    // Rehydrate queue after full navigations (e.g. Spotify OAuth redirect).
-    try {
-      const saved = safeParseQueue(window.localStorage.getItem(QUEUE_STORAGE_KEY));
-      if (saved.length > 0 && manager.getState().queue.length === 0) {
-        manager.loadQueue(saved);
+    let alive = true;
+
+    const rehydrateQueue = async () => {
+      // Rehydrate queue after full navigations (e.g. Spotify OAuth redirect).
+      try {
+        const saved = safeParseQueue(window.localStorage.getItem(QUEUE_STORAGE_KEY));
+        if (saved.length === 0 || manager.getState().queue.length > 0) return;
+
+        let spotifyConnected = false;
+        try {
+          const res = await fetch("/api/spotify/me", { cache: "no-store" });
+          const data = (await res.json()) as { id?: unknown } | null;
+          spotifyConnected = Boolean(data && typeof data.id === "string" && data.id.length > 0);
+        } catch {
+          spotifyConnected = false;
+        }
+
+        if (!alive) return;
+
+        const restored = saved.filter((track) => canRestoreTrack(track, spotifyConnected));
+        if (restored.length > 0) {
+          manager.loadQueue(restored);
+        }
+
+        window.localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(restored));
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
+    };
+
+    void rehydrateQueue();
+
+    return () => {
+      alive = false;
+    };
+  }, [manager]);
+
+  useEffect(() => {
+    const clearQueue = () => {
+      manager.loadQueue([]);
+      try {
+        window.localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify([]));
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener(CLEAR_QUEUE_EVENT, clearQueue);
+    return () => {
+      window.removeEventListener(CLEAR_QUEUE_EVENT, clearQueue);
+    };
   }, [manager]);
 
   useEffect(() => {
     // Persist queue changes, but avoid writing on progress ticks.
     const persistIfChanged = () => {
       try {
-        const q = manager.getState().queue;
+        const q = manager.getState().queue.filter(shouldPersistTrack);
         const sig = queueSignature(q);
         if (sig === lastQueueSigRef.current) return;
         lastQueueSigRef.current = sig;
