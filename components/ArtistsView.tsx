@@ -8,7 +8,22 @@ import { ArrowLeft, Play } from "lucide-react";
 
 type ViewState = { mode: "grid" } | { mode: "detail"; artist: IArtist };
 
-export function ArtistsView({ spotifyConnected }: { spotifyConnected?: boolean }) {
+type InitialArtist = {
+  id: string;
+  name: string;
+  imageUrl: string;
+  source: "spotify" | "jamendo";
+};
+
+export function ArtistsView({
+  spotifyConnected,
+  initialArtist,
+  onClearInitialArtist,
+}: {
+  spotifyConnected?: boolean;
+  initialArtist?: InitialArtist | null;
+  onClearInitialArtist?: () => void;
+}) {
   const { actions } = usePlayer();
   const [viewState, setViewState] = useState<ViewState>({ mode: "grid" });
   const [artists, setArtists] = useState<IArtist[]>([]);
@@ -18,10 +33,34 @@ export function ArtistsView({ spotifyConnected }: { spotifyConnected?: boolean }
   const [topTracks, setTopTracks] = useState<ITrack[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  const [jamendoDetail, setJamendoDetail] = useState<InitialArtist | null>(null);
+
+  // If HomeView selected an artist, go directly to detail.
+  useEffect(() => {
+    if (!initialArtist) return;
+    queueMicrotask(() => {
+      if (initialArtist.source === "spotify") {
+        setJamendoDetail(null);
+        setViewState({
+          mode: "detail",
+          artist: {
+            id: initialArtist.id,
+            name: initialArtist.name,
+            imageUrl: initialArtist.imageUrl,
+          },
+        });
+        return;
+      }
+
+      setViewState({ mode: "grid" });
+      setJamendoDetail(initialArtist);
+    });
+  }, [initialArtist]);
+
   // Load grid
   useEffect(() => {
     if (!spotifyConnected) return;
-    setLoading(true);
+    queueMicrotask(() => setLoading(true));
     fetch("/api/spotify/top-artists")
       .then((r) => r.json())
       .then((data) => { if (!data.error) setArtists(data); })
@@ -33,8 +72,10 @@ export function ArtistsView({ spotifyConnected }: { spotifyConnected?: boolean }
   useEffect(() => {
     if (viewState.mode !== "detail") return;
     const id = viewState.artist.id;
-    setDetailLoading(true);
-    setTopTracks([]);
+    queueMicrotask(() => {
+      setDetailLoading(true);
+      setTopTracks([]);
+    });
 
     fetch(`/api/spotify/artists/${id}/top-tracks`)
       .then((r) => r.json())
@@ -44,6 +85,24 @@ export function ArtistsView({ spotifyConnected }: { spotifyConnected?: boolean }
       .catch(console.error)
       .finally(() => setDetailLoading(false));
   }, [viewState]);
+
+  // Load Jamendo detail tracks
+  useEffect(() => {
+    if (!jamendoDetail) return;
+    queueMicrotask(() => {
+      setDetailLoading(true);
+      setTopTracks([]);
+    });
+
+    fetch(`/api/jamendo/artists/${encodeURIComponent(jamendoDetail.id)}/tracks?limit=10`)
+      .then((r) => r.json())
+      .then((data) => {
+        const items = Array.isArray(data?.results) ? (data.results as ITrack[]) : [];
+        setTopTracks(items);
+      })
+      .catch(console.error)
+      .finally(() => setDetailLoading(false));
+  }, [jamendoDetail]);
 
   const handlePlayAll = () => {
     if (topTracks.length > 0) {
@@ -57,7 +116,7 @@ export function ArtistsView({ spotifyConnected }: { spotifyConnected?: boolean }
   };
 
   // --- GRID VIEW ---
-  if (viewState.mode === "grid") {
+  if (viewState.mode === "grid" && !jamendoDetail) {
     return (
       <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-6">
         <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--muted)]">
@@ -104,7 +163,21 @@ export function ArtistsView({ spotifyConnected }: { spotifyConnected?: boolean }
   }
 
   // --- DETAIL VIEW ---
-  const artist = viewState.artist;
+  let artist: { id: string; name: string; imageUrl: string; genres?: string[] };
+
+  if (jamendoDetail) {
+    artist = {
+      id: jamendoDetail.id,
+      name: jamendoDetail.name,
+      imageUrl: jamendoDetail.imageUrl,
+    };
+  } else {
+    if (viewState.mode !== "detail") {
+      return null;
+    }
+    artist = viewState.artist;
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* Header */}
@@ -112,7 +185,13 @@ export function ArtistsView({ spotifyConnected }: { spotifyConnected?: boolean }
         <button
           type="button"
           className="mb-4 flex items-center gap-2 text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-          onClick={() => setViewState({ mode: "grid" })}
+          onClick={() => {
+            if (jamendoDetail) {
+              setJamendoDetail(null);
+            }
+            setViewState({ mode: "grid" });
+            onClearInitialArtist?.();
+          }}
         >
           <ArrowLeft size={14} /> Volver a artistas
         </button>
@@ -127,6 +206,11 @@ export function ArtistsView({ spotifyConnected }: { spotifyConnected?: boolean }
             {artist.genres && artist.genres.length > 0 && (
               <p className="mt-1 text-xs text-[var(--muted)] capitalize">
                 {artist.genres.slice(0, 3).join(" · ")}
+              </p>
+            )}
+            {jamendoDetail && (
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                vía Jamendo · música libre
               </p>
             )}
             <button
