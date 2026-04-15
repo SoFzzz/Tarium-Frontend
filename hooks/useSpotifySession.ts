@@ -17,12 +17,29 @@ type SpotifySessionState =
 export function useSpotifySession() {
   const [state, setState] = useState<SpotifySessionState>({ status: "loading", me: null });
 
+  const refresh = async () => {
+    try {
+      const res = await fetch("/api/spotify/me", { cache: "no-store" });
+      const data = await res.json();
+      if (data && data.id) {
+        setState({ status: "connected", me: data as SpotifyMe });
+      } else {
+        setState({ status: "disconnected", me: null });
+      }
+    } catch {
+      setState({ status: "disconnected", me: null });
+    }
+  };
+
   useEffect(() => {
     let alive = true;
 
     // If we just came back from OAuth, the first fetch can race cookie persistence.
     const url = new URL(window.location.href);
     const justConnected = url.searchParams.get("spotify") === "connected";
+
+    // While we retry after OAuth, keep the initial state "loading". Avoid setting state
+    // synchronously in the effect body (lint rule).
 
     const run = async (attempt: number) => {
       try {
@@ -33,14 +50,35 @@ export function useSpotifySession() {
         const data = await res.json();
 
         if (data && data.id) {
-          setState({ status: "connected", me: data as SpotifyMe });
+          queueMicrotask(() => {
+            if (!alive) return;
+            setState({ status: "connected", me: data as SpotifyMe });
+          });
+
+          // Remove the transient OAuth marker from the URL.
+          if (justConnected) {
+            const clean = new URL(window.location.href);
+            clean.searchParams.delete("spotify");
+            clean.searchParams.delete("reason");
+            window.history.replaceState(null, "", clean.toString());
+          }
           return;
         } else {
-          setState({ status: "disconnected", me: null });
+          if (!justConnected || attempt >= 3) {
+            queueMicrotask(() => {
+              if (!alive) return;
+              setState({ status: "disconnected", me: null });
+            });
+          }
         }
       } catch {
         if (!alive) return;
-        setState({ status: "disconnected", me: null });
+        if (!justConnected || attempt >= 3) {
+          queueMicrotask(() => {
+            if (!alive) return;
+            setState({ status: "disconnected", me: null });
+          });
+        }
       }
 
       // Retry a few times after OAuth redirect (common race with fresh cookies).
@@ -59,5 +97,5 @@ export function useSpotifySession() {
     };
   }, []);
 
-  return state;
+  return { ...state, refresh };
 }
