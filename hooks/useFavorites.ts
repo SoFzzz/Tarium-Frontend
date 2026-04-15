@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabase';
+import { useSpotifySession } from '@/hooks/useSpotifySession';
 
 export interface Favorite {
   id: string;
@@ -27,12 +28,20 @@ interface UseFavorites {
 
 export function useFavorites(): UseFavorites {
   const { session, user, authLoading } = useAuth();
+  const spotifySession = useSpotifySession();
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [spotifyFavIds, setSpotifyFavIds] = useState<Set<string>>(new Set());
 
   const userId = session?.user?.id as string | undefined;
+
+  // Spotify track IDs are 22-char base62. Some flows may store a full URI.
+  const isSpotifyTrackId = (id: string | null | undefined) => {
+    if (!id) return false;
+    if (id.startsWith('spotify:track:')) return true;
+    return /^[A-Za-z0-9]{22}$/.test(id);
+  };
 
   const getFavorites = useCallback(async () => {
     setLoading(true);
@@ -97,15 +106,20 @@ export function useFavorites(): UseFavorites {
         const created = data as Favorite;
         setFavorites((prev) => [created, ...prev.filter((f) => f.track_id !== created.track_id)]);
 
-        // Sync to Spotify if it looks like a Spotify track ID
-        if (track.track_id && !track.track_id.startsWith('local-')) {
+        // Sync to Spotify only when Spotify is connected and the track is Spotify.
+        if (spotifySession.status === 'connected' && isSpotifyTrackId(track.track_id)) {
           fetch('/api/spotify/me/tracks', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ids: [track.track_id] }),
-          }).then(() => {
-            setSpotifyFavIds(prev => new Set(prev).add(track.track_id));
-          }).catch(() => { /* silently fail spotify sync */ });
+          })
+            .then((r) => {
+              if (!r.ok) return;
+              setSpotifyFavIds((prev) => new Set(prev).add(track.track_id));
+            })
+            .catch(() => {
+              /* silently fail spotify sync */
+            });
         }
 
         return created;
@@ -117,7 +131,7 @@ export function useFavorites(): UseFavorites {
         setLoading(false);
       }
     },
-    [user, userId]
+    [user, userId, spotifySession.status]
   );
 
   const removeFavorite = useCallback(
@@ -143,19 +157,24 @@ export function useFavorites(): UseFavorites {
         if (error) throw error;
         setFavorites((prev) => prev.filter((f) => f.track_id !== trackId));
 
-        // Remove from Spotify too
-        if (trackId && !trackId.startsWith('local-')) {
+        // Remove from Spotify too (only when connected and Spotify track).
+        if (spotifySession.status === 'connected' && isSpotifyTrackId(trackId)) {
           fetch('/api/spotify/me/tracks', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ids: [trackId] }),
-          }).then(() => {
-            setSpotifyFavIds(prev => {
-              const next = new Set(prev);
-              next.delete(trackId);
-              return next;
+          })
+            .then((r) => {
+              if (!r.ok) return;
+              setSpotifyFavIds((prev) => {
+                const next = new Set(prev);
+                next.delete(trackId);
+                return next;
+              });
+            })
+            .catch(() => {
+              /* silently fail spotify sync */
             });
-          }).catch(() => { /* silently fail spotify sync */ });
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error al remover favorito';
@@ -165,7 +184,7 @@ export function useFavorites(): UseFavorites {
         setLoading(false);
       }
     },
-    [user, userId]
+    [user, userId, spotifySession.status]
   );
 
   const isFavorite = useCallback(
@@ -185,16 +204,29 @@ export function useFavorites(): UseFavorites {
 
     void getFavorites();
 
-    // Also load Spotify saved tracks for merge/badge
-    fetch('/api/spotify/me/tracks')
-      .then(r => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setSpotifyFavIds(new Set(data.map((t: any) => t.id)));
-        }
-      })
-      .catch(() => { /* not connected or error */ });
-  }, [user, authLoading, getFavorites]);
+    // Also load Spotify saved tracks for merge/badge (only when connected).
+    if (spotifySession.status === 'connected') {
+      fetch('/api/spotify/me/tracks')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (Array.isArray(data)) {
+            const ids = data
+              .map((t): string | null => {
+                if (!t || typeof t !== 'object') return null;
+                const id = (t as { id?: unknown }).id;
+                return typeof id === 'string' ? id : null;
+              })
+              .filter((id): id is string => Boolean(id));
+            setSpotifyFavIds(new Set(ids));
+          }
+        })
+        .catch(() => {
+          /* not connected or error */
+        });
+    } else {
+      setSpotifyFavIds(new Set());
+    }
+  }, [user, authLoading, getFavorites, spotifySession.status]);
 
   return {
     favorites,
