@@ -111,8 +111,20 @@ export function SearchView() {
   };
 
   const handlePlayTrack = async (track: ITrack) => {
-    actions.addTrackNext(track);
-    await actions.playById(track.id);
+    const isSpotifyTrack =
+      track.source === "spotify" || track.audioUrl?.startsWith("spotify:") === true;
+
+    if (isSpotifyTrack && spotifySession.status !== "connected") {
+      return;
+    }
+
+    const inserted = actions.addTrackNext(track);
+    const queueItemId = inserted.queueItemId ?? inserted.id;
+    try {
+      await actions.playByQueueItemId(queueItemId);
+    } catch {
+      // Avoid uncaught promise noise when Spotify session expired.
+    }
   };
 
   return (
