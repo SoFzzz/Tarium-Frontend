@@ -120,10 +120,8 @@ export function ArtistsView({
       return;
     }
 
-    const inserted = actions.addTrackNext(track);
-    const queueItemId = inserted.queueItemId ?? inserted.id;
     try {
-      await actions.playByQueueItemId(queueItemId);
+      await actions.playNow(track, "artists");
     } catch {
       // Ignore playback failures to avoid uncaught promise noise.
     }

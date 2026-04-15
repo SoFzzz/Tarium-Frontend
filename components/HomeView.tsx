@@ -88,10 +88,8 @@ export function HomeView({
       return;
     }
 
-    // Home clicks should always start playback.
-    actions.loadQueue([track]);
     try {
-      await actions.play();
+      await actions.playNow(track, "home");
     } catch {
       // Ignore playback failures to avoid uncaught promise noise.
     }

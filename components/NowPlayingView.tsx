@@ -183,7 +183,7 @@ export function NowPlayingView() {
                 return;
               }
 
-              void actions.playByQueueItemId(queueItemId).catch(() => {
+              void actions.playQueueItem(queueItemId).catch(() => {
                 // Ignore playback failures to avoid uncaught promise noise.
               });
             }}

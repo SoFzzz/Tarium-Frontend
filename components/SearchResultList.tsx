@@ -62,7 +62,7 @@ export function SearchResultList({ results }: Props) {
               onClick={() => {
                 const hydrated = hydrateTrackPayload(item);
                 rememberTrackPayload(hydrated);
-                actions.addTrack(hydrated);
+                actions.addToQueue(hydrated, "search");
               }}
               >
                 <PlusCircle size={14} />
