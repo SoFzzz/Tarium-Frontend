@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 
+import { refreshAccessTokenWithExpiresIn } from "@/lib/spotify";
+
 export const runtime = "nodejs";
 
 const ACCESS_TOKEN_COOKIE = "spotify_access_token";
+const REFRESH_TOKEN_COOKIE = "spotify_refresh_token";
 const EXPIRES_AT_COOKIE = "spotify_expires_at";
 
 function getCookie(request: Request, name: string): string | null {
@@ -21,31 +24,44 @@ function getCookie(request: Request, name: string): string | null {
 
 export async function GET(request: Request) {
   const accessToken = getCookie(request, ACCESS_TOKEN_COOKIE);
-  if (!accessToken) {
-    return NextResponse.json({ error: "No conectado a Spotify" }, { status: 401 });
-  }
-
+  const refreshToken = getCookie(request, REFRESH_TOKEN_COOKIE);
   const expiresAt = getCookie(request, EXPIRES_AT_COOKIE);
 
-  // If token is expired/near expiry, refresh it to keep SDK happy.
-  if (expiresAt) {
-    const expiresAtSeconds = Number(expiresAt);
-    const now = Math.floor(Date.now() / 1000);
-    if (Number.isFinite(expiresAtSeconds) && expiresAtSeconds - now <= 60) {
-      const refreshed = await fetch(
-        new URL("/api/spotify/refresh", new URL(request.url).origin),
-        {
-          method: "POST",
-          headers: { cookie: request.headers.get("cookie") ?? "" },
-          cache: "no-store",
-        },
-      );
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAtSeconds = expiresAt ? Number(expiresAt) : NaN;
+  const nearExpiry = Number.isFinite(expiresAtSeconds) ? expiresAtSeconds - now <= 60 : false;
 
-      if (refreshed.ok) {
-        // After refresh, the browser will receive updated cookies, but for this response
-        // we still return the existing access token value.
-      }
+  // If we can refresh (near expiry, or missing access token but refresh exists), return a usable token.
+  if ((nearExpiry || !accessToken) && refreshToken) {
+    try {
+      const { accessToken: nextAccessToken, expiresIn } = await refreshAccessTokenWithExpiresIn(refreshToken);
+      const isProd = process.env.NODE_ENV === "production";
+      const nextExpiresAtSeconds = Math.floor(Date.now() / 1000) + expiresIn;
+
+      const response = NextResponse.json({ accessToken: nextAccessToken, expiresAt: String(nextExpiresAtSeconds) });
+      response.cookies.set(ACCESS_TOKEN_COOKIE, nextAccessToken, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: "lax",
+        path: "/",
+        maxAge: expiresIn,
+      });
+      response.cookies.set(EXPIRES_AT_COOKIE, String(nextExpiresAtSeconds), {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      return response;
+    } catch {
+      // Fall through to existing cookies (or 401 if none).
     }
+  }
+
+  if (!accessToken) {
+    return NextResponse.json({ error: "No conectado a Spotify" }, { status: 401 });
   }
 
   return NextResponse.json({ accessToken, expiresAt });
