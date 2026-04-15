@@ -8,12 +8,14 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePlaylists } from "@/hooks/usePlaylists";
 import { useSpotifySession } from "@/hooks/useSpotifySession";
+import { hydrateTrackPayload, rememberTrackPayload } from "@/lib/player/track-payload";
+import { toTrackStorageId } from "@/lib/player/track-key";
 
 export function SearchView() {
   const { actions } = usePlayer();
   const { user } = useAuth();
   const spotifySession = useSpotifySession();
-  const { addFavorite } = useFavorites();
+  const { addFavorite, removeFavorite, isFavorite } = useFavorites();
   const { playlists, addTrackToPlaylist } = usePlaylists();
 
   const [query, setQuery] = useState("");
@@ -58,6 +60,7 @@ export function SearchView() {
 
         const data = await res.json();
         const items = Array.isArray(data?.results) ? (data.results as ITrack[]) : [];
+        items.forEach((item) => rememberTrackPayload(item));
 
         if (!mounted) return;
         setResults(items);
@@ -101,7 +104,9 @@ export function SearchView() {
         throw new Error(payload?.error || "Error al buscar");
       }
       const data = await res.json();
-      setResults(Array.isArray(data) ? data : []);
+      const items = Array.isArray(data) ? (data as ITrack[]) : [];
+      items.forEach((item) => rememberTrackPayload(item));
+      setResults(items);
     } catch (err) {
       console.error("Search error", err);
       setError(err instanceof Error ? err.message : "Error al buscar");
@@ -111,14 +116,16 @@ export function SearchView() {
   };
 
   const handlePlayTrack = async (track: ITrack) => {
+    const hydrated = hydrateTrackPayload(track);
     const isSpotifyTrack =
-      track.source === "spotify" || track.audioUrl?.startsWith("spotify:") === true;
+      hydrated.source === "spotify" || hydrated.audioUrl?.startsWith("spotify:") === true;
 
     if (isSpotifyTrack && spotifySession.status !== "connected") {
       return;
     }
 
-    const inserted = actions.addTrackNext(track);
+    rememberTrackPayload(hydrated);
+    const inserted = actions.addTrackNext(hydrated);
     const queueItemId = inserted.queueItemId ?? inserted.id;
     try {
       await actions.playByQueueItemId(queueItemId);
@@ -211,7 +218,12 @@ export function SearchView() {
                   <button
                     type="button"
                     className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
-                    onClick={(e) => { e.stopPropagation(); actions.addTrack(track); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const hydrated = hydrateTrackPayload(track);
+                      rememberTrackPayload(hydrated);
+                      actions.addTrack(hydrated);
+                    }}
                     title="Agregar a la cola"
                   >
                     <PlusCircle size={14} />
@@ -220,11 +232,21 @@ export function SearchView() {
                     <>
                       <button
                         type="button"
-                        className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                        className={`flex h-8 w-8 items-center justify-center rounded-full border hover:border-[var(--accent)] hover:text-[var(--accent)] ${
+                          isFavorite(toTrackStorageId(track))
+                            ? "border-[var(--accent)] text-[var(--accent)]"
+                            : "border-[var(--line)] text-[var(--muted)]"
+                        }`}
                         onClick={async (e) => {
                           e.stopPropagation();
+                          const trackId = toTrackStorageId(track);
+                          if (isFavorite(trackId)) {
+                            await removeFavorite(trackId);
+                            return;
+                          }
+
                           await addFavorite({
-                            track_id: track.id,
+                            track_id: trackId,
                             title: track.title,
                             artist: track.artist,
                             thumbnail_url: track.thumbnailUrl,
@@ -232,7 +254,10 @@ export function SearchView() {
                         }}
                         title="Favorito"
                       >
-                        <Heart size={14} />
+                        <Heart
+                          size={14}
+                          fill={isFavorite(toTrackStorageId(track)) ? "currentColor" : "none"}
+                        />
                       </button>
                       {playlists.length > 0 && (
                         <button
@@ -240,8 +265,9 @@ export function SearchView() {
                           className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
                           onClick={async (e) => {
                             e.stopPropagation();
+                            const trackId = toTrackStorageId(track);
                             await addTrackToPlaylist(playlists[0].id, {
-                              track_id: track.id,
+                              track_id: trackId,
                               title: track.title,
                               artist: track.artist,
                               thumbnail_url: track.thumbnailUrl,
