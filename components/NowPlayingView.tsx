@@ -55,7 +55,10 @@ export function NowPlayingView() {
     let cancelled = false;
 
     if (!currentTrack?.thumbnailUrl) {
-      setHeroColor("rgba(99, 102, 241, 0.25)");
+      queueMicrotask(() => {
+        if (cancelled) return;
+        setHeroColor("rgba(99, 102, 241, 0.25)");
+      });
       return;
     }
 
@@ -94,12 +97,27 @@ export function NowPlayingView() {
     let cancelled = false;
 
     if (!currentTrack) {
-      setLyrics(null);
-      setLyricsLoading(false);
+      queueMicrotask(() => {
+        if (cancelled) return;
+        setLyrics(null);
+        setLyricsLoading(false);
+      });
       return;
     }
 
-    setLyricsLoading(true);
+    if (!currentTrack.artist?.trim() || !currentTrack.title?.trim()) {
+      queueMicrotask(() => {
+        if (cancelled) return;
+        setLyrics(null);
+        setLyricsLoading(false);
+      });
+      return;
+    }
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setLyricsLoading(true);
+    });
     fetchLyrics(currentTrack.artist, currentTrack.title)
       .then((text) => {
         if (cancelled) return;
@@ -206,8 +224,6 @@ function CurrentTrackPanel({
   onSeekChange: (value: number) => void;
   onSeekCommit: (value: number) => void;
 }) {
-  const progressPercent = duration > 0 ? Math.min(100, (progress / duration) * 100) : 0;
-
   if (!track) {
     return (
       <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6">
