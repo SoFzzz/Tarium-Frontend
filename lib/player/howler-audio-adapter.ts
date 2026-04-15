@@ -16,11 +16,14 @@ export class HowlerAudioAdapter implements MediaAdapter {
   private timeUpdateIntervalId: number | null = null;
 
   public async play(track: ITrack): Promise<void> {
-    const src = track.objectUrl;
+    const src = await this.ensurePlayableSource(track);
 
-    if (!src) {
-      // Sin fuente real no hay nada que reproducir.
-      return;
+    if (src.startsWith("blob:")) {
+      try {
+        await fetch(src, { cache: "no-store" });
+      } catch {
+        throw new Error("El archivo local ya no está disponible. Vuelve a importarlo.");
+      }
     }
 
     // Determinar extensión explícita para ayudar a Howler a elegir el decoder.
@@ -46,6 +49,27 @@ export class HowlerAudioAdapter implements MediaAdapter {
         },
       });
     });
+  }
+
+  private async ensurePlayableSource(track: ITrack): Promise<string> {
+    const src = track.objectUrl;
+
+    if (!src) {
+      throw new Error("Track sin fuente de audio.");
+    }
+
+    if (src.startsWith("blob:")) {
+      try {
+        const response = await fetch(src, { method: "HEAD" });
+        if (!response.ok) {
+          throw new Error("Blob no accesible.");
+        }
+      } catch {
+        throw new Error("El archivo local ya no esta disponible.");
+      }
+    }
+
+    return src;
   }
 
   public async pause(): Promise<void> {
