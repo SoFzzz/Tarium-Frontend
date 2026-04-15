@@ -177,6 +177,10 @@ export class DoublyLinkedList<T> {
     return node.value;
   }
 
+  public clearCurrent(): void {
+    this.current = null;
+  }
+
   public toggleCircular(): void {
     this.isCircular = !this.isCircular;
     this.syncCircularLinks();

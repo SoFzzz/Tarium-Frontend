@@ -98,5 +98,6 @@ export function mapLocalTrackToITrack(local: LocalTrack): ITrack {
     fileName: local.fileName,
     objectUrl: local.objectUrl,
     sourceType: "local",
+    source: "local",
   };
 }

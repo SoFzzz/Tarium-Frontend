@@ -115,7 +115,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         const restored = saved.filter((track) => canRestoreTrack(track, spotifyConnected));
         if (restored.length > 0) {
-          manager.loadQueue(restored);
+          manager.restoreQueueWithoutCurrent(restored);
         }
 
         window.localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(restored));
@@ -164,7 +164,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const filteredQueue = queue.filter(isTrackValidAcrossSessions);
 
     if (filteredQueue.length !== queue.length) {
-      manager.loadQueue(filteredQueue);
+      manager.restoreQueueWithoutCurrent(filteredQueue);
     }
 
     lastUserIdRef.current = currentUserId;
