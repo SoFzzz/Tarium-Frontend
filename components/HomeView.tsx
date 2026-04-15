@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { type ITrack } from "@/lib/player/types";
-import { type IArtist } from "@/lib/spotify";
 import { Play } from "lucide-react";
 import { usePlayer } from "@/providers/PlayerProvider";
 
@@ -10,36 +9,45 @@ interface SpotifySessionProp {
   status: "loading" | "connected" | "disconnected" | "error";
 }
 
-export function HomeView({ session }: { session: SpotifySessionProp }) {
+export function HomeView({
+  session,
+}: {
+  session: SpotifySessionProp;
+}) {
   const { actions } = usePlayer();
-  const [topArtists, setTopArtists] = useState<IArtist[]>([]);
   const [recommendations, setRecommendations] = useState<ITrack[]>([]);
+  const [jamendoTopTracks, setJamendoTopTracks] = useState<ITrack[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (session.status !== "connected") return;
-    
+    if (session.status === "loading") return;
+
     let isMounted = true;
     setLoading(true);
 
     async function loadData() {
       try {
-        const [artistsRes] = await Promise.all([
-          fetch("/api/spotify/top-artists").then(r => r.json()),
-        ]);
-        
-        let artists: IArtist[] = [];
-        if (!artistsRes.error) {
-           artists = artistsRes;
-           if (isMounted) setTopArtists(artists);
-        }
-
-        if (artists.length > 0) {
-          const seeds = artists.slice(0, 5).map(a => a.id).join(",");
-          const recRes = await fetch(`/api/spotify/recommendations?seed_artists=${seeds}`).then(r => r.json());
+        if (session.status === "connected") {
+          const recRes = await fetch("/api/spotify/recommendations", { cache: "no-store" }).then((r) => r.json());
           const recItems = Array.isArray(recRes) ? recRes : (recRes?.tracks?.items ?? []);
           if (!recRes.error && isMounted) {
             setRecommendations(recItems);
+          }
+
+          if (isMounted) {
+            setJamendoTopTracks([]);
+          }
+          return;
+        }
+
+        if (session.status === "disconnected") {
+          const tracksRes = await fetch("/api/jamendo/tracks?limit=20", { cache: "no-store" }).then((r) => r.json());
+          const tracks = Array.isArray(tracksRes?.results) ? (tracksRes.results as ITrack[]) : [];
+
+          if (isMounted) {
+            setJamendoTopTracks(tracks);
+
+            setRecommendations([]);
           }
         }
       } catch (err) {
@@ -60,6 +68,8 @@ export function HomeView({ session }: { session: SpotifySessionProp }) {
     await actions.playById(track.id);
   };
 
+  const showJamendo = session.status === "disconnected";
+
   return (
     <div 
       className="flex flex-col gap-8 rounded-2xl border border-[var(--line)] p-4 sm:p-5 sm:min-h-[70vh]"
@@ -79,51 +89,33 @@ export function HomeView({ session }: { session: SpotifySessionProp }) {
         </div>
       )}
 
-      {session.status === "disconnected" && (
-        <div className="flex flex-1 flex-col items-center justify-center text-center">
-          <p className="text-[var(--muted)] max-w-md">
-            Conecta tu cuenta de Spotify para descubrir artistas, escuchar tus canciones recientes y obtener recomendaciones personalizadas directas a tu reproductor.
-          </p>
+      {showJamendo && loading && (
+        <div className="flex flex-1 items-center justify-center text-sm text-[var(--muted)]">
+          Cargando música libre…
         </div>
       )}
 
-      {session.status === "connected" && !loading && topArtists.length > 0 && (
-        <div className="space-y-4">
-           <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--muted)]">
-             Artistas destacados
-           </p>
-           <div className="flex items-start gap-4 overflow-x-auto pb-4 hide-scrollbar">
-             {topArtists.map(artist => (
-               <div key={artist.id} className="flex min-w-[120px] flex-col items-center gap-2 text-center group cursor-pointer transition-transform hover:scale-105">
-                 <div className="h-28 w-28 overflow-hidden rounded-full border border-[var(--line)] shadow-sm">
-                   <img src={artist.imageUrl} alt={artist.name} className="h-full w-full object-cover" />
-                 </div>
-                 <p className="text-xs font-medium text-[var(--foreground)] group-hover:text-[var(--accent)] line-clamp-2">{artist.name}</p>
-               </div>
-             ))}
-           </div>
-         </div>
-       )}
-
       {session.status === "connected" && !loading && recommendations.length > 0 && (
         <div className="space-y-4">
-           <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--muted)]">
-             Recomendados para ti
-           </p>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--muted)]">
+              Recomendados para ti
+            </p>
+          </div>
            <div className="flex flex-col gap-1 sm:grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
               {recommendations.slice(0, 12).map(track => (
-                <div 
-                  key={track.id} 
-                  className="group flex items-center justify-between rounded-xl border border-transparent p-2 hover:bg-[var(--surface-elevated)] hover:border-[var(--line)] transition-colors cursor-pointer"
-                  onClick={() => handlePlayTrack(track)}
-                >
-                 <div className="flex items-center gap-3 overflow-hidden">
-                   <img src={track.thumbnailUrl} alt={track.title} className="h-10 w-10 shrink-0 rounded-md object-cover" />
-                   <div className="min-w-0">
-                     <p className="truncate text-xs font-semibold group-hover:text-[var(--accent)]">{track.title}</p>
-                     <p className="truncate text-[10px] text-[var(--muted)]">{track.artist}</p>
-                   </div>
-                 </div>
+                 <div 
+                   key={track.id} 
+                   className="group flex items-center justify-between rounded-xl border border-transparent px-3 py-2 hover:bg-[var(--surface-elevated)] hover:border-[var(--line)] transition-colors cursor-pointer"
+                   onClick={() => handlePlayTrack(track)}
+                 >
+                  <div className="flex items-center gap-3 overflow-hidden">
+                   <img src={track.thumbnailUrl} alt={track.title} className="h-12 w-12 shrink-0 rounded-md object-cover" />
+                    <div className="min-w-0">
+                     <p className="truncate text-sm font-semibold leading-snug group-hover:text-[var(--accent)]">{track.title}</p>
+                     <p className="truncate text-xs text-[var(--muted)]">{track.artist}</p>
+                    </div>
+                  </div>
                   <button
                     type="button"
                     onClick={(e) => {
@@ -140,6 +132,59 @@ export function HomeView({ session }: { session: SpotifySessionProp }) {
             </div>
          </div>
        )}
+
+      {showJamendo && !loading && jamendoTopTracks.length > 0 && (
+        <div className="space-y-4">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[var(--muted)]">
+              Recomendados para ti
+            </p>
+            <p className="mt-1 text-[10px] text-[var(--muted)]">vía Jamendo · música libre</p>
+          </div>
+           <div className="flex flex-col gap-1 sm:grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+             {jamendoTopTracks.slice(0, 12).map((track) => (
+               <div
+                 key={track.id}
+                 className="group flex items-center justify-between rounded-xl border border-transparent px-3 py-2 hover:bg-[var(--surface-elevated)] hover:border-[var(--line)] transition-colors cursor-pointer"
+                 onClick={() => handlePlayTrack(track)}
+               >
+                 <div className="flex items-center gap-3 overflow-hidden">
+                   <img
+                     src={track.thumbnailUrl}
+                     alt={track.title}
+                     className="h-12 w-12 shrink-0 rounded-md object-cover"
+                   />
+                   <div className="min-w-0">
+                     <p className="truncate text-sm font-semibold leading-snug group-hover:text-[var(--accent)]">
+                       {track.title}
+                     </p>
+                     <p className="truncate text-xs text-[var(--muted)]">{track.artist}</p>
+                   </div>
+                 </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void handlePlayTrack(track);
+                  }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white opacity-0 transition-opacity hover:scale-110 group-hover:opacity-100"
+                >
+                  <Play size={14} className="ml-0.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showJamendo && !loading && jamendoTopTracks.length === 0 && (
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <p className="text-[var(--muted)] max-w-md">
+            No se pudo cargar contenido de Jamendo en este momento.
+          </p>
+        </div>
+      )}
 
       {/* Utilities */}
       <style dangerouslySetInnerHTML={{__html: `
