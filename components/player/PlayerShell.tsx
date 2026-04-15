@@ -243,7 +243,7 @@ export function PlayerShell() {
     if (!ensureSpotifyPlaybackAllowed(track)) return false;
 
     try {
-      await actions.playByQueueItemId(queueItemId);
+      await actions.playQueueItem(queueItemId);
       return true;
     } catch (err) {
       handlePlaybackError(err, track);
@@ -394,7 +394,7 @@ export function PlayerShell() {
     }
 
     mapped.forEach((track) => {
-      actions.addTrack(track);
+      actions.addToQueue(track, "library");
     });
   };
 
@@ -1066,7 +1066,7 @@ export function PlayerShell() {
 
                       const mapped = mapFavoriteToITrack(fav);
                       rememberTrackPayload(mapped);
-                      const inserted = actions.addTrack(mapped);
+                      const inserted = actions.addToQueue(mapped, "favorites");
                       const queueItemId = inserted.queueItemId ?? inserted.id;
                       void playQueueItemValidated(queueItemId, mapped);
                     }}

@@ -104,6 +104,12 @@ export class PlayerManager {
   }
 
   public addTrack(track: ITrack): ITrack {
+    const existingByQueueItemId = this.findExactQueueInjection(track);
+    if (existingByQueueItemId) {
+      this.error = null;
+      return existingByQueueItemId;
+    }
+
     const rescued = this.rescueInvalidDuplicate(track);
     if (rescued) {
       this.error = null;
@@ -118,6 +124,12 @@ export class PlayerManager {
   }
 
   public addTrackNext(track: ITrack): ITrack {
+    const existingByQueueItemId = this.findExactQueueInjection(track);
+    if (existingByQueueItemId) {
+      this.error = null;
+      return existingByQueueItemId;
+    }
+
     const rescued = this.rescueInvalidDuplicate(track);
     if (rescued) {
       this.error = null;
@@ -160,6 +172,11 @@ export class PlayerManager {
       return null;
     }
 
+    const currentTrack = this.playlist.getCurrent();
+    const currentQueueItemId = currentTrack?.queueItemId ?? currentTrack?.id ?? null;
+    const removingCurrentTrack = currentQueueItemId === targetQueueItemId;
+    const wasPlaying = this.isPlaying;
+
     const removedTrack = this.playlist.removeById(targetQueueItemId);
 
     if (removedTrack === null) {
@@ -169,6 +186,25 @@ export class PlayerManager {
     if (this.playlist.isEmpty()) {
       this.isPlaying = false;
       this.loading = false;
+      this.progressSeconds = 0;
+      this.durationSeconds = 0;
+    }
+
+    if (removingCurrentTrack) {
+      this.safePauseAdapter();
+      this.progressSeconds = 0;
+      this.durationSeconds = 0;
+      this.isPlaying = false;
+      this.loading = false;
+
+      const nextCandidate = this.playlist.getCurrent();
+      if (wasPlaying && nextCandidate) {
+        void this.play().then(() => {
+          if (this.error && this.playlist.size() > 1) {
+            void this.playNext();
+          }
+        });
+      }
     }
 
     this.error = null;
@@ -317,60 +353,26 @@ export class PlayerManager {
     return track;
   }
 
+  public addToQueue(track: ITrack, _origin?: string): ITrack {
+    return this.addTrack(track);
+  }
+
+  public async playNow(track: ITrack, _origin?: string): Promise<ITrack | null> {
+    const inserted = this.addTrackNext(track);
+    const queueItemId = inserted.queueItemId ?? inserted.id;
+    return this.playByQueueItemId(queueItemId);
+  }
+
+  public async playQueueItem(queueItemId: string): Promise<ITrack | null> {
+    return this.playByQueueItemId(queueItemId);
+  }
+
   public async playNext(): Promise<ITrack | null> {
-    const previous = this.playlist.getCurrent();
-    const track = this.playlist.getNext();
-
-    if (track === null) {
-      return null;
-    }
-    this.progressSeconds = 0;
-    this.durationSeconds = 0;
-    this.notify();
-
-    try {
-      await this.play();
-    } catch {
-      // play() ya no lanza para errores esperables.
-    }
-
-    if (this.error && previous?.queueItemId) {
-      this.playlist.setCurrentById(previous.queueItemId);
-      this.progressSeconds = 0;
-      this.durationSeconds = 0;
-      this.notify();
-      return null;
-    }
-
-    return track;
+    return this.playByDirection("next");
   }
 
   public async playPrevious(): Promise<ITrack | null> {
-    const previous = this.playlist.getCurrent();
-    const track = this.playlist.getPrevious();
-
-    if (track === null) {
-      return null;
-    }
-    this.progressSeconds = 0;
-    this.durationSeconds = 0;
-    this.notify();
-
-    try {
-      await this.play();
-    } catch {
-      // play() ya no lanza para errores esperables.
-    }
-
-    if (this.error && previous?.queueItemId) {
-      this.playlist.setCurrentById(previous.queueItemId);
-      this.progressSeconds = 0;
-      this.durationSeconds = 0;
-      this.notify();
-      return null;
-    }
-
-    return track;
+    return this.playByDirection("previous");
   }
 
   public setVolume(volume: number): void {
@@ -485,6 +487,11 @@ export class PlayerManager {
   }
 
   private findQueueItemIdByTrackId(trackId: string): string | null {
+    const currentTrack = this.playlist.getCurrent();
+    if (currentTrack && currentTrack.id === trackId) {
+      return currentTrack.queueItemId ?? currentTrack.id;
+    }
+
     const queue = this.playlist.toArray();
     const track = queue.find((item) => item.id === trackId);
     if (!track) return null;
@@ -516,7 +523,12 @@ export class PlayerManager {
       return;
     }
 
-    await this.playNext();
+    const next = await this.playNext();
+    if (!next) {
+      this.isPlaying = false;
+      this.loading = false;
+      this.notify();
+    }
   }
 
   private getInvalidTrackReason(track: ITrack): string | null {
@@ -573,5 +585,76 @@ export class PlayerManager {
     }
 
     return existingPlayable;
+  }
+
+  private findExactQueueInjection(track: ITrack): ITrack | null {
+    if (!track.queueItemId) {
+      return null;
+    }
+
+    const queue = this.playlist.toArray();
+    const existing = queue.find((item) => item.queueItemId === track.queueItemId);
+    return existing ?? null;
+  }
+
+  private safePauseAdapter(): void {
+    try {
+      const maybePromise = this.mediaAdapter?.pause();
+      if (maybePromise && typeof (maybePromise as Promise<unknown>).then === "function") {
+        void (maybePromise as Promise<unknown>).catch(() => {
+          // best-effort pause
+        });
+      }
+    } catch {
+      // best-effort pause
+    }
+  }
+
+  private async playByDirection(direction: "next" | "previous"): Promise<ITrack | null> {
+    const queueSize = this.playlist.size();
+    if (queueSize === 0) {
+      this.isPlaying = false;
+      this.loading = false;
+      this.notify();
+      return null;
+    }
+
+    for (let attempts = 0; attempts < queueSize; attempts += 1) {
+      const track = direction === "next" ? this.playlist.getNext() : this.playlist.getPrevious();
+
+      if (!track) {
+        this.isPlaying = false;
+        this.loading = false;
+        this.notify();
+        return null;
+      }
+
+      const invalidReason = this.getInvalidTrackReason(track);
+      if (invalidReason) {
+        this.error = "Se omitio un track invalido de la cola.";
+        this.notify();
+        continue;
+      }
+
+      this.progressSeconds = 0;
+      this.durationSeconds = 0;
+      this.notify();
+
+      try {
+        await this.play();
+      } catch {
+        // play() ya no lanza para errores esperables.
+      }
+
+      if (!this.error) {
+        return track;
+      }
+    }
+
+    this.isPlaying = false;
+    this.loading = false;
+    this.error = "No hay tracks validos para reproducir en la cola.";
+    this.notify();
+    return null;
   }
 }

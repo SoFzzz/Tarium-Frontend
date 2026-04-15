@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const SPOTIFY_AUTH_REQUIRED_EVENT = "tarium:spotify-auth-required";
 
@@ -15,6 +15,8 @@ type SpotifySessionState =
   | { status: "loading"; me: null }
   | { status: "disconnected"; me: null }
   | { status: "connected"; me: SpotifyMe };
+
+const TRANSIENT_OAUTH_PARAMS = ["spotify", "reason", "spotify_error"] as const;
 
 async function hasUsableSpotifyToken(): Promise<boolean> {
   try {
@@ -36,113 +38,101 @@ async function hasUsableSpotifyToken(): Promise<boolean> {
 export function useSpotifySession() {
   const [state, setState] = useState<SpotifySessionState>({ status: "loading", me: null });
 
-  const refresh = async () => {
+  const stripTransientOAuthParams = useCallback((): { hadConnectedMarker: boolean } => {
+    const url = new URL(window.location.href);
+    const hadConnectedMarker = url.searchParams.get("spotify") === "connected";
+
+    let changed = false;
+    for (const key of TRANSIENT_OAUTH_PARAMS) {
+      if (url.searchParams.has(key)) {
+        url.searchParams.delete(key);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      window.history.replaceState(window.history.state, "", url.toString());
+    }
+
+    return { hadConnectedMarker };
+  }, []);
+
+  const resolveSessionState = useCallback(async (): Promise<SpotifySessionState> => {
     try {
       const res = await fetch("/api/spotify/me", {
         cache: "no-store",
         credentials: "include",
       });
-      const data = await res.json();
+
+      const data = await res.json().catch(() => null);
       if (data && data.id) {
         const tokenOk = await hasUsableSpotifyToken();
         if (!tokenOk) {
-          setState({ status: "disconnected", me: null });
-          return;
+          return { status: "disconnected", me: null };
         }
-        setState({ status: "connected", me: data as SpotifyMe });
-      } else {
-        setState({ status: "disconnected", me: null });
+
+        return { status: "connected", me: data as SpotifyMe };
       }
+
+      return { status: "disconnected", me: null };
     } catch {
-      setState({ status: "disconnected", me: null });
+      return { status: "disconnected", me: null };
     }
-  };
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const next = await resolveSessionState();
+    setState(next);
+  }, [resolveSessionState]);
 
   useEffect(() => {
     let alive = true;
 
-    // If we just came back from OAuth, the first fetch can race cookie persistence.
-    const url = new URL(window.location.href);
-    const justConnected = url.searchParams.get("spotify") === "connected";
+    const bootstrap = async () => {
+      const { hadConnectedMarker } = stripTransientOAuthParams();
+      const maxAttempts = hadConnectedMarker ? 4 : 1;
 
-    // While we retry after OAuth, keep the initial state "loading". Avoid setting state
-    // synchronously in the effect body (lint rule).
-
-    const run = async (attempt: number) => {
-      try {
-        const res = await fetch("/api/spotify/me", {
-          cache: "no-store",
-          credentials: "include",
-        });
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const next = await resolveSessionState();
         if (!alive) return;
 
-        // /me now always returns 200. Body is null when no session, or user object when connected.
-        const data = await res.json();
-
-        if (data && data.id) {
-          const tokenOk = await hasUsableSpotifyToken();
-          if (!tokenOk) {
-            queueMicrotask(() => {
-              if (!alive) return;
-              setState({ status: "disconnected", me: null });
-            });
-            return;
-          }
-
-          queueMicrotask(() => {
-            if (!alive) return;
-            setState({ status: "connected", me: data as SpotifyMe });
-          });
-
-          // Remove the transient OAuth marker from the URL.
-          if (justConnected) {
-            const clean = new URL(window.location.href);
-            clean.searchParams.delete("spotify");
-            clean.searchParams.delete("reason");
-            window.history.replaceState(null, "", clean.toString());
-          }
+        if (next.status === "connected") {
+          setState(next);
           return;
-        } else {
-          if (!justConnected || attempt >= 3) {
-            queueMicrotask(() => {
-              if (!alive) return;
-              setState({ status: "disconnected", me: null });
-            });
-          }
         }
-      } catch {
-        if (!alive) return;
-        if (!justConnected || attempt >= 3) {
-          queueMicrotask(() => {
-            if (!alive) return;
-            setState({ status: "disconnected", me: null });
-          });
-        }
-      }
 
-      // Retry a few times after OAuth redirect (common race with fresh cookies).
-      if (justConnected && attempt < 3) {
-        const delayMs = 300 + attempt * 400;
-        window.setTimeout(() => {
-          if (!alive) return;
-          void run(attempt + 1);
-        }, delayMs);
+        if (attempt < maxAttempts - 1) {
+          const delayMs = 300 + attempt * 400;
+          await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+          continue;
+        }
+
+        setState(next);
       }
     };
-
-    void run(0);
 
     const handleSpotifyAuthRequired = () => {
       if (!alive) return;
       setState({ status: "disconnected", me: null });
     };
+
+    const handlePopState = () => {
+      if (!alive) return;
+      stripTransientOAuthParams();
+      void refresh();
+    };
+
+    void bootstrap();
+
     window.addEventListener(SPOTIFY_AUTH_REQUIRED_EVENT, handleSpotifyAuthRequired);
+    window.addEventListener("popstate", handlePopState);
 
     return () => {
       alive = false;
       window.removeEventListener(SPOTIFY_AUTH_REQUIRED_EVENT, handleSpotifyAuthRequired);
+      window.removeEventListener("popstate", handlePopState);
     };
-  }, []);
+  }, [refresh, resolveSessionState, stripTransientOAuthParams]);
 
   return { ...state, refresh };
 }

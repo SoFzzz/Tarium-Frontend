@@ -125,10 +125,8 @@ export function SearchView() {
     }
 
     rememberTrackPayload(hydrated);
-    const inserted = actions.addTrackNext(hydrated);
-    const queueItemId = inserted.queueItemId ?? inserted.id;
     try {
-      await actions.playByQueueItemId(queueItemId);
+      await actions.playNow(hydrated, "search");
     } catch {
       // Avoid uncaught promise noise when Spotify session expired.
     }
@@ -222,7 +220,7 @@ export function SearchView() {
                       e.stopPropagation();
                       const hydrated = hydrateTrackPayload(track);
                       rememberTrackPayload(hydrated);
-                      actions.addTrack(hydrated);
+                      actions.addToQueue(hydrated, "search");
                     }}
                     title="Agregar a la cola"
                   >

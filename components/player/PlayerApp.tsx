@@ -5,11 +5,28 @@ import { PlayerProvider } from "@/providers/PlayerProvider";
 import { PlayerShell } from "./PlayerShell";
 
 export function PlayerApp() {
-  // Fix 3: Clean OAuth query params from URL after redirect
+  // Clean transient Spotify OAuth params from URL after redirect.
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (url.searchParams.has("spotify") || url.searchParams.has("spotify_error")) {
-      window.history.replaceState({}, "", "/");
+    let changed = false;
+
+    if (url.searchParams.has("spotify")) {
+      url.searchParams.delete("spotify");
+      changed = true;
+    }
+
+    if (url.searchParams.has("spotify_error")) {
+      url.searchParams.delete("spotify_error");
+      changed = true;
+    }
+
+    if (url.searchParams.has("reason")) {
+      url.searchParams.delete("reason");
+      changed = true;
+    }
+
+    if (changed) {
+      window.history.replaceState(window.history.state, "", url.toString());
     }
   }, []);
 
