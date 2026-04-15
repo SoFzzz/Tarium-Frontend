@@ -168,13 +168,23 @@ export interface IArtist {
 
 export async function getTopArtists(token: string, limit = 10): Promise<IArtist[]> {
   const url = `https://api.spotify.com/v1/me/top/artists?limit=${limit}`;
-  const data = await spotifyFetch<{ items?: any[] }>(url, token);
-  return (data.items || []).map((item) => ({
-    id: item.id,
-    name: item.name,
-    imageUrl: item.images?.[0]?.url || "/placeholder.png",
-    genres: item.genres,
-  }));
+  const data = await spotifyFetch<{ items?: unknown[] }>(url, token);
+  return (data.items || [])
+    .map((item): IArtist | null => {
+      if (!item || typeof item !== "object") return null;
+      const obj = item as Record<string, unknown>;
+      const id = typeof obj.id === "string" ? obj.id : "";
+      const name = typeof obj.name === "string" ? obj.name : "";
+
+      const images = Array.isArray(obj.images) ? (obj.images as unknown[]) : [];
+      const firstImage = images[0] && typeof images[0] === "object" ? (images[0] as Record<string, unknown>) : null;
+      const imageUrl = (firstImage && typeof firstImage.url === "string" ? firstImage.url : "") || "/placeholder.png";
+
+      const genres = Array.isArray(obj.genres) ? (obj.genres as unknown[]).filter((g): g is string => typeof g === "string") : undefined;
+      if (!id || !name) return null;
+      return { id, name, imageUrl, genres };
+    })
+    .filter((a): a is IArtist => Boolean(a));
 }
 
 export async function getRecommendations(token: string, seedArtists: string[], limit = 10): Promise<ITrack[]> {
@@ -212,24 +222,48 @@ export interface ISpotifyPlaylist {
 
 export async function getCategories(token: string, limit = 30, locale = "es_ES"): Promise<ICategory[]> {
   const url = `https://api.spotify.com/v1/browse/categories?limit=${limit}&locale=${locale}`;
-  const data = await spotifyFetch<{ categories?: { items?: any[] } }>(url, token);
-  return (data.categories?.items || []).map((c) => ({
-    id: c.id,
-    name: c.name,
-    imageUrl: c.icons?.[0]?.url || "/placeholder.png",
-  }));
+  const data = await spotifyFetch<{ categories?: { items?: unknown[] } }>(url, token);
+  const items = data.categories?.items || [];
+  return items
+    .map((c): ICategory | null => {
+      if (!c || typeof c !== "object") return null;
+      const obj = c as Record<string, unknown>;
+      const id = typeof obj.id === "string" ? obj.id : "";
+      const name = typeof obj.name === "string" ? obj.name : "";
+
+      const icons = Array.isArray(obj.icons) ? (obj.icons as unknown[]) : [];
+      const firstIcon = icons[0] && typeof icons[0] === "object" ? (icons[0] as Record<string, unknown>) : null;
+      const imageUrl = (firstIcon && typeof firstIcon.url === "string" ? firstIcon.url : "") || "/placeholder.png";
+
+      if (!id || !name) return null;
+      return { id, name, imageUrl };
+    })
+    .filter((c): c is ICategory => Boolean(c));
 }
 
 export async function getCategoryPlaylists(token: string, categoryId: string, limit = 20): Promise<ISpotifyPlaylist[]> {
   const url = `https://api.spotify.com/v1/browse/categories/${categoryId}/playlists?limit=${limit}`;
-  const data = await spotifyFetch<{ playlists?: { items?: any[] } }>(url, token);
-  return (data.playlists?.items || []).filter(Boolean).map((p) => ({
-    id: p.id,
-    name: p.name,
-    imageUrl: p.images?.[0]?.url || "/placeholder.png",
-    description: p.description || "",
-    tracksTotal: p.tracks?.total || 0,
-  }));
+  const data = await spotifyFetch<{ playlists?: { items?: unknown[] } }>(url, token);
+  const items = data.playlists?.items || [];
+  return items
+    .map((p): ISpotifyPlaylist | null => {
+      if (!p || typeof p !== "object") return null;
+      const obj = p as Record<string, unknown>;
+      const id = typeof obj.id === "string" ? obj.id : "";
+      const name = typeof obj.name === "string" ? obj.name : "";
+
+      const images = Array.isArray(obj.images) ? (obj.images as unknown[]) : [];
+      const firstImage = images[0] && typeof images[0] === "object" ? (images[0] as Record<string, unknown>) : null;
+      const imageUrl = (firstImage && typeof firstImage.url === "string" ? firstImage.url : "") || "/placeholder.png";
+
+      const description = typeof obj.description === "string" ? obj.description : "";
+      const tracksObj = obj.tracks && typeof obj.tracks === "object" ? (obj.tracks as Record<string, unknown>) : null;
+      const tracksTotal = tracksObj && typeof tracksObj.total === "number" ? tracksObj.total : 0;
+
+      if (!id || !name) return null;
+      return { id, name, imageUrl, description, tracksTotal };
+    })
+    .filter((p): p is ISpotifyPlaylist => Boolean(p));
 }
 
 export async function getPlaylistTracks(token: string, playlistId: string, limit = 50): Promise<ITrack[]> {
@@ -243,12 +277,24 @@ export async function getPlaylistTracks(token: string, playlistId: string, limit
 
 export async function getUserPlaylists(token: string, limit = 50): Promise<ISpotifyPlaylist[]> {
   const url = `https://api.spotify.com/v1/me/playlists?limit=${limit}`;
-  const data = await spotifyFetch<{ items?: any[] }>(url, token);
-  return (data.items || []).filter(Boolean).map((p) => ({
-    id: p.id,
-    name: p.name,
-    imageUrl: p.images?.[0]?.url || "/placeholder.png",
-    description: p.description || "",
-    tracksTotal: p.tracks?.total || 0,
-  }));
+  const data = await spotifyFetch<{ items?: unknown[] }>(url, token);
+  return (data.items || [])
+    .map((p): ISpotifyPlaylist | null => {
+      if (!p || typeof p !== "object") return null;
+      const obj = p as Record<string, unknown>;
+      const id = typeof obj.id === "string" ? obj.id : "";
+      const name = typeof obj.name === "string" ? obj.name : "";
+
+      const images = Array.isArray(obj.images) ? (obj.images as unknown[]) : [];
+      const firstImage = images[0] && typeof images[0] === "object" ? (images[0] as Record<string, unknown>) : null;
+      const imageUrl = (firstImage && typeof firstImage.url === "string" ? firstImage.url : "") || "/placeholder.png";
+
+      const description = typeof obj.description === "string" ? obj.description : "";
+      const tracksObj = obj.tracks && typeof obj.tracks === "object" ? (obj.tracks as Record<string, unknown>) : null;
+      const tracksTotal = tracksObj && typeof tracksObj.total === "number" ? tracksObj.total : 0;
+
+      if (!id || !name) return null;
+      return { id, name, imageUrl, description, tracksTotal };
+    })
+    .filter((p): p is ISpotifyPlaylist => Boolean(p));
 }
