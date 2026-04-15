@@ -43,9 +43,28 @@ type SpotifyPlayer = {
   removeListener: (event: string, cb?: (...args: unknown[]) => void) => boolean;
 };
 
+const SPOTIFY_AUTH_REQUIRED_EVENT = "tarium:spotify-auth-required";
+const AUTH_FAILURE_COOLDOWN_MS = 10000;
+
+function notifySpotifyAuthRequired(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(SPOTIFY_AUTH_REQUIRED_EVENT));
+}
+
+class SpotifyPlaybackAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SpotifyPlaybackAuthError";
+  }
+}
+
 async function defaultGetAccessToken(): Promise<string> {
   const res = await fetch("/api/spotify/token", { cache: "no-store" });
   if (!res.ok) {
+    if (res.status === 401) {
+      notifySpotifyAuthRequired();
+      throw new SpotifyPlaybackAuthError("Spotify requiere reconexion");
+    }
     throw new Error("No conectado a Spotify");
   }
   const data = (await res.json()) as { accessToken?: string };
@@ -78,6 +97,7 @@ export class SpotifyAudioAdapter implements MediaAdapter {
 
   private readyPromise: Promise<void> | null = null;
   private getAccessToken: () => Promise<string>;
+  private authFailureUntil = 0;
 
   // Ended detection state
   private lastPositionMs = 0;
@@ -87,6 +107,18 @@ export class SpotifyAudioAdapter implements MediaAdapter {
 
   constructor(getAccessToken: () => Promise<string> = defaultGetAccessToken) {
     this.getAccessToken = getAccessToken;
+  }
+
+  private setAuthFailure(message?: string): void {
+    this.authFailureUntil = Date.now() + AUTH_FAILURE_COOLDOWN_MS;
+    if (message) {
+      console.warn("Spotify auth/session issue:", message);
+    }
+    notifySpotifyAuthRequired();
+  }
+
+  private isAuthFailureActive(): boolean {
+    return Date.now() < this.authFailureUntil;
   }
 
   public async play(track: ITrack): Promise<void> {
@@ -169,12 +201,21 @@ export class SpotifyAudioAdapter implements MediaAdapter {
   }
 
   private async ensureReady(): Promise<void> {
+    if (this.isAuthFailureActive()) {
+      throw new SpotifyPlaybackAuthError("Spotify requiere reconexion");
+    }
+
     if (!this.readyPromise) {
       this.readyPromise = (async () => {
         await this.ensurePlayer();
         await waitForSpotifySdkReady();
         await this.connectPlayer();
       })();
+
+      this.readyPromise = this.readyPromise.catch((err) => {
+        this.readyPromise = null;
+        throw err;
+      });
     }
     await this.readyPromise;
   }
@@ -221,6 +262,10 @@ export class SpotifyAudioAdapter implements MediaAdapter {
           ? String((e as SpotifyError).message)
           : String(e);
       console.error(`Spotify SDK ${label}:`, msg);
+
+      if (label === "authentication_error") {
+        this.setAuthFailure(msg);
+      }
     };
     player.addListener("initialization_error", logError("initialization_error"));
     player.addListener("authentication_error", logError("authentication_error"));
@@ -234,7 +279,8 @@ export class SpotifyAudioAdapter implements MediaAdapter {
     if (!this.player) return;
     const ok = await this.player.connect();
     if (!ok) {
-      throw new Error("Spotify Player connect failed");
+      this.setAuthFailure("connect failed");
+      throw new SpotifyPlaybackAuthError("Spotify Player connect failed");
     }
 
     // Wait for device id.
