@@ -28,13 +28,13 @@ import { LocalLibraryDropzone } from "@/components/LocalLibraryDropzone";
 
 type Props = {
   queue: ITrack[];
-  currentTrackId: string | null;
+  currentTrackQueueItemId: string | null;
   authenticated?: boolean;
   favoritedIds?: Set<string>;
   playlists?: Playlist[];
   onReorder?: (newQueue: ITrack[]) => void;
-  onPlayTrack: (id: string) => void;
-  onRemoveTrack?: (id: string) => void;
+  onPlayTrack: (queueItemId: string) => void;
+  onRemoveTrack?: (queueItemId: string) => void;
   onToggleFavorite: (track: ITrack | null) => void | Promise<void>;
   onAddTrackToPlaylist?: (playlistId: string, track: ITrack) => Promise<void> | void;
   onTracksParsed: (tracks: LocalTrack[]) => void;
@@ -42,7 +42,7 @@ type Props = {
 
 export function LibraryView({
   queue,
-  currentTrackId,
+  currentTrackQueueItemId,
   authenticated,
   favoritedIds,
   playlists,
@@ -59,7 +59,10 @@ export function LibraryView({
     setOrderedQueue(queue);
   }, [queue]);
 
-  const ids = useMemo(() => orderedQueue.map((t) => t.id), [orderedQueue]);
+  const ids = useMemo(
+    () => orderedQueue.map((t) => t.queueItemId ?? t.id),
+    [orderedQueue],
+  );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 8 } }),
@@ -69,8 +72,8 @@ export function LibraryView({
     const { active, over } = event;
     if (!over) return;
     if (active.id === over.id) return;
-    const oldIndex = orderedQueue.findIndex((t) => t.id === active.id);
-    const newIndex = orderedQueue.findIndex((t) => t.id === over.id);
+    const oldIndex = orderedQueue.findIndex((t) => (t.queueItemId ?? t.id) === active.id);
+    const newIndex = orderedQueue.findIndex((t) => (t.queueItemId ?? t.id) === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
     const next = arrayMove(orderedQueue, oldIndex, newIndex);
     setOrderedQueue(next);
@@ -118,9 +121,9 @@ export function LibraryView({
                 <ul className="space-y-1 text-xs">
                   {orderedQueue.map((track) => (
                     <SortableLibraryRow
-                      key={track.id}
+                      key={track.queueItemId ?? track.id}
                       track={track}
-                      currentTrackId={currentTrackId}
+                      currentTrackQueueItemId={currentTrackQueueItemId}
                       authenticated={authenticated}
                       isFav={Boolean(favoritedIds?.has(track.id))}
                       playlists={playlists}
@@ -142,7 +145,7 @@ export function LibraryView({
 
 function SortableLibraryRow({
   track,
-  currentTrackId,
+  currentTrackQueueItemId,
   authenticated,
   isFav,
   playlists,
@@ -152,17 +155,17 @@ function SortableLibraryRow({
   onAddTrackToPlaylist,
 }: {
   track: ITrack;
-  currentTrackId: string | null;
+  currentTrackQueueItemId: string | null;
   authenticated?: boolean;
   isFav: boolean;
   playlists?: Playlist[];
-  onPlayTrack: (id: string) => void;
-  onRemoveTrack?: (id: string) => void;
+  onPlayTrack: (queueItemId: string) => void;
+  onRemoveTrack?: (queueItemId: string) => void;
   onToggleFavorite: (track: ITrack | null) => void | Promise<void>;
   onAddTrackToPlaylist?: (playlistId: string, track: ITrack) => Promise<void> | void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: track.id,
+    id: track.queueItemId ?? track.id,
   });
 
   const [playlistMenuOpen, setPlaylistMenuOpen] = useState(false);
@@ -193,7 +196,8 @@ function SortableLibraryRow({
     transition,
   };
 
-  const isCurrent = track.id === currentTrackId;
+  const queueItemId = track.queueItemId ?? track.id;
+  const isCurrent = queueItemId === currentTrackQueueItemId;
   const canAddToPlaylist = Boolean(authenticated && onAddTrackToPlaylist && playlists && playlists.length > 0);
 
   return (
@@ -218,7 +222,7 @@ function SortableLibraryRow({
       <button
         type="button"
         className="flex flex-1 items-center gap-3 text-left"
-        onClick={() => onPlayTrack(track.id)}
+        onClick={() => onPlayTrack(queueItemId)}
       >
         <img
           src={track.thumbnailUrl}
@@ -241,7 +245,7 @@ function SortableLibraryRow({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            onRemoveTrack(track.id);
+            onRemoveTrack(queueItemId);
           }}
         >
           <Trash2 size={13} />
