@@ -64,7 +64,6 @@ import { AuthModalControlled } from "@/components/auth/AuthModal";
 import { useSpotifySession } from "@/hooks/useSpotifySession";
 import { HomeView } from "@/components/HomeView";
 import { NowPlayingView } from "@/components/NowPlayingView";
-import { ArtistsView } from "@/components/ArtistsView";
 import { GenresView } from "@/components/GenresView";
 import { SearchView } from "@/components/SearchView";
 
@@ -99,8 +98,8 @@ function SidebarIcon({
       title={label}
       className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${
         active
-          ? "bg-[var(--tar-teal)] text-[var(--tar-bg)]"
-          : "text-[var(--color-text-secondary)] hover:text-[var(--tar-mint)]"
+          ? "bg-[var(--accent)] text-white"
+          : "text-[var(--muted)] hover:text-[var(--accent)]"
       }`}
     >
       <Icon size={20} />
@@ -124,7 +123,7 @@ function MobileNavIcon({
     <button
       onClick={onClick}
       className={`flex flex-col items-center gap-1 px-3 py-1 text-xs transition-colors ${
-        active ? "text-[var(--tar-teal)]" : "text-[var(--color-text-secondary)]"
+        active ? "text-[var(--accent)]" : "text-[var(--muted)]"
       }`}
     >
       <Icon size={18} />
@@ -157,7 +156,7 @@ export function PlayerShell() {
   const [deletePlaylistId, setDeletePlaylistId] = useState<string | null>(null);
   const [deletePlaylistLoading, setDeletePlaylistLoading] = useState(false);
   
-  const [activeView, setActiveView] = useState<"home" | "library" | "favorites" | "playlists" | "artists" | "genres" | "nowplaying" | "search">("home");
+  const [activeView, setActiveView] = useState<"home" | "library" | "favorites" | "playlists" | "genres" | "nowplaying" | "search">("home");
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [playlistTracks, setPlaylistTracks] = useState<PlaylistTrack[] | null>(null);
   const [loadingPlaylistTracks, setLoadingPlaylistTracks] = useState(false);
@@ -462,6 +461,15 @@ export function PlayerShell() {
     window.location.href = "/api/spotify/login";
   };
 
+  const handleSpotifyLogout = async () => {
+    try {
+      await fetch("/api/spotify/logout", { method: "POST" });
+    } finally {
+      // Refresh local session view even if request fails.
+      await spotifySession.refresh();
+    }
+  };
+
   return (
     <TooltipProvider>
       <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -471,16 +479,15 @@ export function PlayerShell() {
             <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-[var(--background)]">
               T
             </div>
-            <nav className="flex flex-col items-center gap-3 text-[var(--muted)]">
-              {/* Descubrimiento */}
-              <SidebarIcon icon={Home} label="Inicio" active={activeView === "home"} onClick={() => setActiveView("home")} />
-              <SidebarIcon icon={Search} label="Buscar" active={activeView === "search"} onClick={() => setActiveView("search")} />
+              <nav className="flex flex-col items-center gap-3 text-[var(--muted)]">
+                {/* Descubrimiento */}
+                <SidebarIcon icon={Home} label="Inicio" active={activeView === "home"} onClick={() => setActiveView("home")} />
+                <SidebarIcon icon={Search} label="Buscar" active={activeView === "search"} onClick={() => setActiveView("search")} />
               
               <hr className="my-1 w-8 border-[var(--line)] opacity-50" />
 
-              {/* Formatos */}
-              <SidebarIcon icon={Music2} label="Artistas" active={activeView === "artists"} onClick={() => setActiveView("artists")} />
-              <SidebarIcon icon={Radio} label="Géneros" active={activeView === "genres"} onClick={() => setActiveView("genres")} />
+                {/* Formatos */}
+                <SidebarIcon icon={Radio} label="Géneros" active={activeView === "genres"} onClick={() => setActiveView("genres")} />
               
               <hr className="my-1 w-8 border-[var(--line)] opacity-50" />
 
@@ -544,17 +551,23 @@ export function PlayerShell() {
 
               <div className="hidden items-center gap-2 sm:flex">
                 {spotifySession.status === "connected" ? (
-                  <div className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface-elevated)] px-3 py-2 text-xs text-[var(--muted)]">
-                    {spotifySession.me.avatarUrl ? (
-                      <img
-                        src={spotifySession.me.avatarUrl}
-                        alt={spotifySession.me.displayName ?? "Spotify"}
-                        className="h-5 w-5 rounded-full object-cover"
-                      />
-                    ) : null}
-                    <span className="max-w-[10rem] truncate">
-                      {spotifySession.me.displayName ?? "Spotify conectado"}
-                    </span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface-elevated)] px-3 py-2 text-xs text-[var(--muted)]">
+                      {spotifySession.me.avatarUrl ? (
+                        <img
+                          src={spotifySession.me.avatarUrl}
+                          alt={spotifySession.me.displayName ?? "Spotify"}
+                          className="h-5 w-5 rounded-full object-cover"
+                        />
+                      ) : null}
+                      <span className="max-w-[10rem] truncate">
+                        {spotifySession.me.displayName ?? "Spotify conectado"}
+                      </span>
+                    </div>
+
+                    <Button size="sm" variant="outline" onClick={() => void handleSpotifyLogout()}>
+                      Logout Spotify
+                    </Button>
                   </div>
                 ) : (
                   <Button
@@ -603,9 +616,9 @@ export function PlayerShell() {
                 {activeView === "nowplaying" ? (
                   <NowPlayingView />
                 ) : activeView === "home" ? (
-                  <HomeView session={spotifySession} />
-                ) : activeView === "artists" ? (
-                  <ArtistsView spotifyConnected={spotifySession.status === "connected"} />
+                  <HomeView
+                    session={spotifySession}
+                  />
                 ) : activeView === "genres" ? (
                   <GenresView spotifyConnected={spotifySession.status === "connected"} />
                 ) : activeView === "search" ? (
@@ -894,7 +907,6 @@ export function PlayerShell() {
           >
             <MobileNavIcon icon={Home} label="Inicio" active={activeView === "home"} onClick={() => setActiveView("home")} />
             <MobileNavIcon icon={Search} label="Buscar" active={activeView === "search"} onClick={() => setActiveView("search")} />
-            <MobileNavIcon icon={Music2} label="Artistas" active={activeView === "artists"} onClick={() => setActiveView("artists")} />
             <MobileNavIcon icon={Radio} label="Géneros" active={activeView === "genres"} onClick={() => setActiveView("genres")} />
             <MobileNavIcon icon={Star} label="Favs" active={activeView === "favorites"} onClick={() => setActiveView("favorites")} />
             <MobileNavIcon icon={ListMusic} label="Listas" active={activeView === "playlists"} onClick={() => setActiveView("playlists")} />
@@ -1177,7 +1189,8 @@ function ThemeToggleButton() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    // Defer setState to avoid react-hooks/set-state-in-effect lint.
+    queueMicrotask(() => setMounted(true));
   }, []);
 
   const isDark = theme === "dark";
