@@ -27,7 +27,7 @@ export type SpotifyTrack = {
 
 function toITrack(track: SpotifyTrack): ITrack {
   return {
-    id: track.id,
+    id: `sp:${track.id}`,
     title: track.name,
     artist: track.artists[0]?.name ?? "Artista desconocido",
     album: track.album?.name,

@@ -3,6 +3,7 @@
 import { GripVertical, Heart, Play, Trash2, Download, Loader2 } from "lucide-react";
 import type { ISpotifyPlaylist } from "@/lib/spotify";
 import type { ITrack } from "@/lib/player/types";
+import { canonicalTrackIdentity } from "@/lib/player/track-key";
 
 import {
   DndContext,
@@ -263,12 +264,15 @@ export function PlaylistsView({
                 <SortableContext items={ids} strategy={verticalListSortingStrategy}>
                   <ul className="space-y-1 text-xs">
                     {orderedTracks.map((t) => (
-                      <SortablePlaylistRow
-                        key={t.id}
-                        track={t}
-                        isFav={favoritedIds.has(t.track_id)}
-                        authenticated={isAuthed}
-                        onPlayTrack={onPlayTrack}
+                        <SortablePlaylistRow
+                          key={t.id}
+                          track={t}
+                          isFav={
+                            favoritedIds.has(t.track_id) ||
+                            favoritedIds.has(canonicalTrackIdentity(t.track_id))
+                          }
+                          authenticated={isAuthed}
+                          onPlayTrack={onPlayTrack}
                         onToggleFavorite={onToggleFavorite}
                         onRemoveTrack={onRemoveTrack}
                       />

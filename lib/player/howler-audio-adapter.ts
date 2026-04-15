@@ -52,7 +52,7 @@ export class HowlerAudioAdapter implements MediaAdapter {
   }
 
   private async ensurePlayableSource(track: ITrack): Promise<string> {
-    const src = track.objectUrl;
+    const src = track.objectUrl ?? track.audioUrl;
 
     if (!src) {
       throw new Error("Track sin fuente de audio.");

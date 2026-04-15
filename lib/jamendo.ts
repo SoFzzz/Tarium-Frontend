@@ -54,7 +54,7 @@ function toITrack(track: JamendoTrackApi): ITrack | null {
   const audioSrc = track.audio;
 
   return {
-    id: track.id,
+    id: `ja:${track.id}`,
     title: track.name,
     artist: track.artist_name ?? "Artista desconocido",
     album: track.album_name,

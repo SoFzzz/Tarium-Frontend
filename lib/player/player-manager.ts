@@ -1,5 +1,7 @@
 import type { MediaAdapter } from "./media-adapter";
 import { DoublyLinkedList } from "./structures/doubly-linked-list";
+import { canonicalTrackIdentity } from "@/lib/player/track-key";
+
 import type { ITrack, PlaybackState, RepeatMode } from "./types";
 
 type Subscriber = (state: PlaybackState) => void;
@@ -57,6 +59,22 @@ export class PlayerManager {
     this.notify();
   }
 
+  public restoreQueueWithoutCurrent(tracks: ITrack[]): void {
+    this.playlist.clear();
+
+    for (const track of tracks) {
+      this.playlist.insertAtEnd(this.ensureQueueIdentity(track));
+    }
+
+    this.playlist.clearCurrent();
+    this.isPlaying = false;
+    this.loading = false;
+    this.progressSeconds = 0;
+    this.durationSeconds = 0;
+    this.error = null;
+    this.notify();
+  }
+
   /** Reemplaza por completo la cola actual con la nueva lista. */
   public setQueue(tracks: ITrack[]): void {
     const currentQueueItemId = this.playlist.getCurrent()?.queueItemId ?? null;
@@ -86,6 +104,12 @@ export class PlayerManager {
   }
 
   public addTrack(track: ITrack): ITrack {
+    const rescued = this.rescueInvalidDuplicate(track);
+    if (rescued) {
+      this.error = null;
+      return rescued;
+    }
+
     const withIdentity = this.ensureQueueIdentity(track);
     this.playlist.insertAtEnd(withIdentity);
     this.error = null;
@@ -94,6 +118,12 @@ export class PlayerManager {
   }
 
   public addTrackNext(track: ITrack): ITrack {
+    const rescued = this.rescueInvalidDuplicate(track);
+    if (rescued) {
+      this.error = null;
+      return rescued;
+    }
+
     const withIdentity = this.ensureQueueIdentity(track);
     const currentTrack = this.playlist.getCurrent();
 
@@ -105,7 +135,10 @@ export class PlayerManager {
     }
 
     const queue = this.playlist.toArray();
-    const currentIndex = queue.findIndex((item) => item.id === currentTrack.id);
+    const currentIdentity = currentTrack.queueItemId ?? currentTrack.id;
+    const currentIndex = queue.findIndex(
+      (item) => (item.queueItemId ?? item.id) === currentIdentity,
+    );
 
     if (currentIndex === -1) {
       this.playlist.insertAtEnd(withIdentity);
@@ -148,6 +181,15 @@ export class PlayerManager {
     const currentTrack = this.playlist.getCurrent();
 
     if (currentTrack === null) {
+      return;
+    }
+
+    const invalidReason = this.getInvalidTrackReason(currentTrack);
+    if (invalidReason) {
+      this.isPlaying = false;
+      this.loading = false;
+      this.error = invalidReason;
+      this.notify();
       return;
     }
 
@@ -439,7 +481,10 @@ export class PlayerManager {
       return;
     }
 
-    const isLastTrack = queue.length > 0 && queue[queue.length - 1]?.id === current.id;
+    const isLastTrack =
+      queue.length > 0 &&
+      (queue[queue.length - 1]?.queueItemId ?? queue[queue.length - 1]?.id) ===
+        (current.queueItemId ?? current.id);
 
     if (this.repeatMode === "one") {
       await this.play();
@@ -454,5 +499,61 @@ export class PlayerManager {
     }
 
     await this.playNext();
+  }
+
+  private getInvalidTrackReason(track: ITrack): string | null {
+    const isSpotify =
+      track.source === "spotify" ||
+      track.audioUrl?.startsWith("spotify:") === true;
+
+    if (isSpotify) {
+      if (!track.audioUrl || !track.audioUrl.startsWith("spotify:")) {
+        return "Este track de Spotify no tiene una URI valida de reproduccion.";
+      }
+      return null;
+    }
+
+    const shouldRequirePlayableSource =
+      track.source === "local" ||
+      track.source === "jamendo" ||
+      track.source === "youtube" ||
+      track.source === "deezer" ||
+      track.sourceType === "local" ||
+      track.sourceType === "remote";
+
+    if (!shouldRequirePlayableSource) {
+      return null;
+    }
+
+    const source = track.objectUrl ?? track.audioUrl;
+    if (!source || source.trim().length === 0) {
+      return "Este track no tiene una fuente de audio valida.";
+    }
+
+    return null;
+  }
+
+  private isTrackPayloadPlayable(track: ITrack): boolean {
+    return this.getInvalidTrackReason(track) === null;
+  }
+
+  private rescueInvalidDuplicate(track: ITrack): ITrack | null {
+    if (this.isTrackPayloadPlayable(track)) {
+      return null;
+    }
+
+    const identity = canonicalTrackIdentity(track.id);
+    const queue = this.playlist.toArray();
+    const existingPlayable = queue.find(
+      (item) =>
+        canonicalTrackIdentity(item.id) === identity &&
+        this.isTrackPayloadPlayable(item),
+    );
+
+    if (!existingPlayable) {
+      return null;
+    }
+
+    return existingPlayable;
   }
 }

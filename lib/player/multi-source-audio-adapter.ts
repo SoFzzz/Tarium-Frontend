@@ -36,10 +36,30 @@ export class MultiSourceAudioAdapter implements MediaAdapter {
     });
   }
 
+  private isSpotifyTrack(track: ITrack): boolean {
+    return (
+      track.source === "spotify" ||
+      (typeof track.audioUrl === "string" && track.audioUrl.startsWith("spotify:"))
+    );
+  }
+
+  private assertTrackPayload(track: ITrack): void {
+    if (this.isSpotifyTrack(track)) {
+      if (!track.audioUrl || !track.audioUrl.startsWith("spotify:")) {
+        throw new Error("Pista de Spotify invalida: falta URI de reproduccion.");
+      }
+      return;
+    }
+
+    const src = track.objectUrl ?? track.audioUrl;
+    if (!src || src.trim().length === 0) {
+      throw new Error("Pista invalida: falta URL de audio reproducible.");
+    }
+  }
+
   public async play(track: ITrack): Promise<void> {
-    const isSpotify =
-      (track.source === "spotify" && Boolean(track.audioUrl)) ||
-      (typeof track.audioUrl === "string" && track.audioUrl.startsWith("spotify:"));
+    this.assertTrackPayload(track);
+    const isSpotify = this.isSpotifyTrack(track);
 
     const incoming: AdapterKind = isSpotify ? "spotify" : "howler";
 

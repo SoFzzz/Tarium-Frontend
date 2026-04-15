@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabase';
+import { canonicalTrackIdentity } from '@/lib/player/track-key';
 
 export interface Favorite {
   id: string;
@@ -104,15 +105,29 @@ export function useFavorites(): UseFavorites {
 
   const addFavorite = useCallback(
     async (track: Omit<Favorite, 'id' | 'user_id' | 'created_at'>): Promise<Favorite | null> => {
-      if (pendingByTrack.current.has(track.track_id)) {
-        return favoritesRef.current.find((f) => f.track_id === track.track_id) ?? null;
+      const incomingIdentity = canonicalTrackIdentity(track.track_id);
+
+      if (pendingByTrack.current.has(incomingIdentity)) {
+        return (
+          favoritesRef.current.find(
+            (f) => canonicalTrackIdentity(f.track_id) === incomingIdentity
+          ) ?? null
+        );
       }
 
-      if (favoritesRef.current.some((f) => f.track_id === track.track_id)) {
-        return favoritesRef.current.find((f) => f.track_id === track.track_id) ?? null;
+      if (
+        favoritesRef.current.some(
+          (f) => canonicalTrackIdentity(f.track_id) === incomingIdentity
+        )
+      ) {
+        return (
+          favoritesRef.current.find(
+            (f) => canonicalTrackIdentity(f.track_id) === incomingIdentity
+          ) ?? null
+        );
       }
 
-      pendingByTrack.current.add(track.track_id);
+      pendingByTrack.current.add(incomingIdentity);
       startPending();
       setError(null);
 
@@ -185,7 +200,11 @@ export function useFavorites(): UseFavorites {
         return created;
       } catch (err) {
         if (isDuplicateFavoriteError(err)) {
-          return favoritesRef.current.find((f) => f.track_id === track.track_id) ?? null;
+          return (
+            favoritesRef.current.find(
+              (f) => canonicalTrackIdentity(f.track_id) === incomingIdentity
+            ) ?? null
+          );
         }
 
         const message = err instanceof Error ? err.message : 'Error al agregar favorito';
@@ -193,7 +212,7 @@ export function useFavorites(): UseFavorites {
         console.error('Error adding favorite in Supabase:', err);
         return null;
       } finally {
-        pendingByTrack.current.delete(track.track_id);
+        pendingByTrack.current.delete(incomingIdentity);
         endPending();
       }
     },
@@ -202,6 +221,11 @@ export function useFavorites(): UseFavorites {
 
   const removeFavorite = useCallback(
     async (trackId: string): Promise<void> => {
+      const identity = canonicalTrackIdentity(trackId);
+      const matchedTrackId =
+        favoritesRef.current.find((f) => canonicalTrackIdentity(f.track_id) === identity)?.track_id ??
+        trackId;
+
       startPending();
       setError(null);
 
@@ -231,7 +255,7 @@ export function useFavorites(): UseFavorites {
           .from('favorites')
           .delete()
           .eq('user_id', authUserId)
-          .eq('track_id', trackId);
+          .eq('track_id', matchedTrackId);
 
         if (error) {
           const message = error instanceof Error ? error.message : 'Error al remover favorito';
@@ -240,7 +264,9 @@ export function useFavorites(): UseFavorites {
           return;
         }
 
-        setFavorites((prev) => prev.filter((f) => f.track_id !== trackId));
+        setFavorites((prev) =>
+          prev.filter((f) => canonicalTrackIdentity(f.track_id) !== identity)
+        );
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error al remover favorito';
         setError(message);
@@ -253,7 +279,10 @@ export function useFavorites(): UseFavorites {
   );
 
   const isFavorite = useCallback(
-    (trackId: string) => favorites.some((f) => f.track_id === trackId),
+    (trackId: string) => {
+      const identity = canonicalTrackIdentity(trackId);
+      return favorites.some((f) => canonicalTrackIdentity(f.track_id) === identity);
+    },
     [favorites]
   );
 
