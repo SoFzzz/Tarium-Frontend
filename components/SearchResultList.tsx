@@ -6,6 +6,8 @@ import { usePlayer } from "@/providers/PlayerProvider";
 import { usePlaylists } from "@/hooks/usePlaylists";
 import { useFavorites } from "@/hooks/useFavorites";
 import type { ITrack } from "@/lib/player/types";
+import { toTrackStorageId } from "@/lib/player/track-key";
+import { hydrateTrackPayload, rememberTrackPayload } from "@/lib/player/track-payload";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/providers/AuthProvider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -58,7 +60,9 @@ export function SearchResultList({ results }: Props) {
               variant="outline"
               className="h-7 w-7 rounded-full px-0"
               onClick={() => {
-                actions.addTrack(item);
+                const hydrated = hydrateTrackPayload(item);
+                rememberTrackPayload(hydrated);
+                actions.addTrack(hydrated);
               }}
               >
                 <PlusCircle size={14} />
@@ -74,8 +78,9 @@ export function SearchResultList({ results }: Props) {
                     onClick={async () => {
                       if (!playlists.length) return;
                       const target = playlists[0]!;
+                      const trackId = toTrackStorageId(item);
                       await addTrackToPlaylist(target.id, {
-                        track_id: item.id,
+                        track_id: trackId,
                         title: item.title,
                         artist: item.artist,
                         thumbnail_url: item.thumbnailUrl,
@@ -91,8 +96,9 @@ export function SearchResultList({ results }: Props) {
                     variant="outline"
                     className="h-7 w-7 rounded-full px-0"
                     onClick={async () => {
+                      const trackId = toTrackStorageId(item);
                       await addFavorite({
-                        track_id: item.id,
+                        track_id: trackId,
                         title: item.title,
                         artist: item.artist,
                         thumbnail_url: item.thumbnailUrl,
