@@ -292,6 +292,7 @@ export function PlaylistsView({
           <Button
             size="sm"
             variant="outline"
+            className="hidden"
             onClick={handleLoadSpotifyPlaylists}
             disabled={loadingSpotify}
           >
