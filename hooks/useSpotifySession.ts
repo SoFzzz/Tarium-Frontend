@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+const SPOTIFY_AUTH_REQUIRED_EVENT = "tarium:spotify-auth-required";
+
 type SpotifyMe = {
   displayName: string | null;
   avatarUrl: string | null;
@@ -14,14 +16,39 @@ type SpotifySessionState =
   | { status: "disconnected"; me: null }
   | { status: "connected"; me: SpotifyMe };
 
+async function hasUsableSpotifyToken(): Promise<boolean> {
+  try {
+    const tokenRes = await fetch("/api/spotify/token", {
+      cache: "no-store",
+      credentials: "include",
+    });
+
+    if (tokenRes.status === 401) {
+      return false;
+    }
+
+    return tokenRes.ok;
+  } catch {
+    return false;
+  }
+}
+
 export function useSpotifySession() {
   const [state, setState] = useState<SpotifySessionState>({ status: "loading", me: null });
 
   const refresh = async () => {
     try {
-      const res = await fetch("/api/spotify/me", { cache: "no-store" });
+      const res = await fetch("/api/spotify/me", {
+        cache: "no-store",
+        credentials: "include",
+      });
       const data = await res.json();
       if (data && data.id) {
+        const tokenOk = await hasUsableSpotifyToken();
+        if (!tokenOk) {
+          setState({ status: "disconnected", me: null });
+          return;
+        }
         setState({ status: "connected", me: data as SpotifyMe });
       } else {
         setState({ status: "disconnected", me: null });
@@ -43,13 +70,25 @@ export function useSpotifySession() {
 
     const run = async (attempt: number) => {
       try {
-        const res = await fetch("/api/spotify/me", { cache: "no-store" });
+        const res = await fetch("/api/spotify/me", {
+          cache: "no-store",
+          credentials: "include",
+        });
         if (!alive) return;
 
         // /me now always returns 200. Body is null when no session, or user object when connected.
         const data = await res.json();
 
         if (data && data.id) {
+          const tokenOk = await hasUsableSpotifyToken();
+          if (!tokenOk) {
+            queueMicrotask(() => {
+              if (!alive) return;
+              setState({ status: "disconnected", me: null });
+            });
+            return;
+          }
+
           queueMicrotask(() => {
             if (!alive) return;
             setState({ status: "connected", me: data as SpotifyMe });
@@ -92,8 +131,16 @@ export function useSpotifySession() {
     };
 
     void run(0);
+
+    const handleSpotifyAuthRequired = () => {
+      if (!alive) return;
+      setState({ status: "disconnected", me: null });
+    };
+    window.addEventListener(SPOTIFY_AUTH_REQUIRED_EVENT, handleSpotifyAuthRequired);
+
     return () => {
       alive = false;
+      window.removeEventListener(SPOTIFY_AUTH_REQUIRED_EVENT, handleSpotifyAuthRequired);
     };
   }, []);
 
