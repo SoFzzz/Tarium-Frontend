@@ -16,6 +16,7 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const CLEAR_QUEUE_EVENT = "tarium:clear-queue";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -28,6 +29,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let alive = true;
+
+    const isTransientCallbackPath = (pathname: string) =>
+      pathname === "/callback" || pathname === "/api/spotify/callback";
+
+    const sanitizeHistoryEntry = () => {
+      const { pathname, search, hash } = window.location;
+      if (!isTransientCallbackPath(pathname)) return;
+
+      const safeUrl = `/${search || ""}${hash || ""}`;
+      window.history.replaceState(null, "", safeUrl);
+    };
+
+    sanitizeHistoryEntry();
+
+    const handlePopState = () => {
+      sanitizeHistoryEntry();
+    };
+
+    window.addEventListener("popstate", handlePopState);
 
     const init = async () => {
       try {
@@ -53,17 +73,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Suscribirse a cambios de autenticación
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!alive) return;
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
       setAuthLoading(false);
       setActionLoading(false);
+
+      if (event === "SIGNED_OUT") {
+        window.dispatchEvent(new Event(CLEAR_QUEUE_EVENT));
+      }
     });
 
     return () => {
       alive = false;
       subscription?.unsubscribe();
+      window.removeEventListener("popstate", handlePopState);
     };
   }, []);
 
