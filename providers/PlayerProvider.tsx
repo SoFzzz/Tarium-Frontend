@@ -6,6 +6,7 @@ import { usePlayerManager } from "@/hooks/usePlayerManager";
 import { PlayerManager } from "@/lib/player/player-manager";
 import { MultiSourceAudioAdapter } from "@/lib/player/multi-source-audio-adapter";
 import type { ITrack } from "@/lib/player/types";
+import { useAuth } from "@/providers/AuthProvider";
 
 type PlayerContextValue = ReturnType<typeof usePlayerManager>;
 
@@ -83,12 +84,14 @@ function queueSignature(queue: ITrack[]): string {
 }
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [manager] = useState(
     () => new PlayerManager([], new MultiSourceAudioAdapter()),
   );
   const value = usePlayerManager(manager);
 
   const lastQueueSigRef = useRef<string>("");
+  const lastUserIdRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     let alive = true;
@@ -143,6 +146,29 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener(CLEAR_QUEUE_EVENT, clearQueue);
     };
   }, [manager]);
+
+  useEffect(() => {
+    const currentUserId = user?.id ?? null;
+    const previousUserId = lastUserIdRef.current;
+
+    if (previousUserId === undefined) {
+      lastUserIdRef.current = currentUserId;
+      return;
+    }
+
+    if (previousUserId === currentUserId) {
+      return;
+    }
+
+    const queue = manager.getState().queue;
+    const filteredQueue = queue.filter(isTrackValidAcrossSessions);
+
+    if (filteredQueue.length !== queue.length) {
+      manager.loadQueue(filteredQueue);
+    }
+
+    lastUserIdRef.current = currentUserId;
+  }, [manager, user?.id]);
 
   useEffect(() => {
     // Persist queue changes, but avoid writing on progress ticks.
