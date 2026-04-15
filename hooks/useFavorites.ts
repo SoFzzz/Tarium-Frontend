@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabase';
 
@@ -20,9 +20,25 @@ interface UseFavorites {
   error: string | null;
   spotifyFavIds: Set<string>;
   getFavorites: () => Promise<void>;
-  addFavorite: (track: Omit<Favorite, 'id' | 'user_id' | 'created_at'>) => Promise<Favorite>;
+  addFavorite: (track: Omit<Favorite, 'id' | 'user_id' | 'created_at'>) => Promise<Favorite | null>;
   removeFavorite: (trackId: string) => Promise<void>;
   isFavorite: (trackId: string) => boolean;
+}
+
+function isDuplicateFavoriteError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+
+  const code = 'code' in err ? String((err as { code?: unknown }).code ?? '') : '';
+  const status = 'status' in err ? String((err as { status?: unknown }).status ?? '') : '';
+  const message =
+    'message' in err ? String((err as { message?: unknown }).message ?? '').toLowerCase() : '';
+
+  return (
+    code === '23505' ||
+    status === '409' ||
+    message.includes('duplicate key') ||
+    message.includes('already exists')
+  );
 }
 
 export function useFavorites(): UseFavorites {
@@ -31,11 +47,30 @@ export function useFavorites(): UseFavorites {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [spotifyFavIds, setSpotifyFavIds] = useState<Set<string>>(new Set());
+  const favoritesRef = useRef<Favorite[]>([]);
+  const pendingByTrack = useRef<Set<string>>(new Set());
+  const pendingCount = useRef(0);
 
   const userId = session?.user?.id as string | undefined;
 
-  const getFavorites = useCallback(async () => {
+  useEffect(() => {
+    favoritesRef.current = favorites;
+  }, [favorites]);
+
+  const startPending = useCallback(() => {
+    pendingCount.current += 1;
     setLoading(true);
+  }, []);
+
+  const endPending = useCallback(() => {
+    pendingCount.current = Math.max(0, pendingCount.current - 1);
+    if (pendingCount.current === 0) {
+      setLoading(false);
+    }
+  }, []);
+
+  const getFavorites = useCallback(async () => {
+    startPending();
     setError(null);
 
     try {
@@ -63,29 +98,44 @@ export function useFavorites(): UseFavorites {
       setError(message);
       console.error('Error fetching favorites from Supabase:', err);
     } finally {
-      setLoading(false);
+      endPending();
     }
-  }, [user, userId]);
+  }, [user, userId, startPending, endPending]);
 
   const addFavorite = useCallback(
-    async (track: Omit<Favorite, 'id' | 'user_id' | 'created_at'>): Promise<Favorite> => {
-      setLoading(true);
+    async (track: Omit<Favorite, 'id' | 'user_id' | 'created_at'>): Promise<Favorite | null> => {
+      if (pendingByTrack.current.has(track.track_id)) {
+        return favoritesRef.current.find((f) => f.track_id === track.track_id) ?? null;
+      }
+
+      if (favoritesRef.current.some((f) => f.track_id === track.track_id)) {
+        return favoritesRef.current.find((f) => f.track_id === track.track_id) ?? null;
+      }
+
+      pendingByTrack.current.add(track.track_id);
+      startPending();
       setError(null);
 
       try {
         if (!user) {
-          throw new Error('No hay sesion activa');
+          setError('No hay sesion activa');
+          return null;
         }
 
         if (!userId) {
-          throw new Error('No hay sesion activa');
+          setError('No hay sesion activa');
+          return null;
         }
 
         const { data: authData, error: authError } = await supabase.auth.getUser();
-        if (authError) throw authError;
+        if (authError) {
+          setError(authError.message);
+          return null;
+        }
         const authUserId = authData.user?.id;
         if (!authUserId) {
-          throw new Error('No hay sesion activa');
+          setError('No hay sesion activa');
+          return null;
         }
 
         const { data, error } = await supabase
@@ -100,42 +150,81 @@ export function useFavorites(): UseFavorites {
           .select('*')
           .single();
 
-        if (error) throw error;
+        if (error) {
+          if (isDuplicateFavoriteError(error)) {
+            const { data: existingData } = await supabase
+              .from('favorites')
+              .select('*')
+              .eq('user_id', authUserId)
+              .eq('track_id', track.track_id)
+              .maybeSingle();
+
+            const existing = (existingData as Favorite | null) ?? {
+              id: `favorite-${authUserId}-${track.track_id}`,
+              user_id: authUserId,
+              track_id: track.track_id,
+              title: track.title,
+              artist: track.artist,
+              thumbnail_url: track.thumbnail_url,
+              created_at: new Date().toISOString(),
+            };
+
+            setFavorites((prev) => [existing, ...prev.filter((f) => f.track_id !== existing.track_id)]);
+            return existing;
+          }
+
+          const message = error instanceof Error ? error.message : 'Error al agregar favorito';
+          setError(message);
+          console.error('Error adding favorite in Supabase:', error);
+          return null;
+        }
+
         const created = data as Favorite;
         setFavorites((prev) => [created, ...prev.filter((f) => f.track_id !== created.track_id)]);
 
         return created;
       } catch (err) {
+        if (isDuplicateFavoriteError(err)) {
+          return favoritesRef.current.find((f) => f.track_id === track.track_id) ?? null;
+        }
+
         const message = err instanceof Error ? err.message : 'Error al agregar favorito';
         setError(message);
         console.error('Error adding favorite in Supabase:', err);
-        throw err;
+        return null;
       } finally {
-        setLoading(false);
+        pendingByTrack.current.delete(track.track_id);
+        endPending();
       }
     },
-    [user, userId]
+    [user, userId, startPending, endPending]
   );
 
   const removeFavorite = useCallback(
     async (trackId: string): Promise<void> => {
-      setLoading(true);
+      startPending();
       setError(null);
 
       try {
         if (!user) {
-          throw new Error('No hay sesion activa');
+          setError('No hay sesion activa');
+          return;
         }
 
         if (!userId) {
-          throw new Error('No hay sesion activa');
+          setError('No hay sesion activa');
+          return;
         }
 
         const { data: authData, error: authError } = await supabase.auth.getUser();
-        if (authError) throw authError;
+        if (authError) {
+          setError(authError.message);
+          return;
+        }
         const authUserId = authData.user?.id;
         if (!authUserId) {
-          throw new Error('No hay sesion activa');
+          setError('No hay sesion activa');
+          return;
         }
 
         const { error } = await supabase
@@ -144,18 +233,23 @@ export function useFavorites(): UseFavorites {
           .eq('user_id', authUserId)
           .eq('track_id', trackId);
 
-        if (error) throw error;
+        if (error) {
+          const message = error instanceof Error ? error.message : 'Error al remover favorito';
+          setError(message);
+          console.error('Error removing favorite from Supabase:', error);
+          return;
+        }
+
         setFavorites((prev) => prev.filter((f) => f.track_id !== trackId));
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error al remover favorito';
         setError(message);
         console.error('Error removing favorite from Supabase:', err);
-        throw err;
       } finally {
-        setLoading(false);
+        endPending();
       }
     },
-    [user, userId]
+    [user, userId, startPending, endPending]
   );
 
   const isFavorite = useCallback(
