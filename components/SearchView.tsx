@@ -1,16 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search as SearchIcon, Play, PlusCircle, Heart, ListPlus, Loader2 } from "lucide-react";
 import type { ITrack } from "@/lib/player/types";
 import { usePlayer } from "@/providers/PlayerProvider";
 import { useAuth } from "@/providers/AuthProvider";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePlaylists } from "@/hooks/usePlaylists";
+import { useSpotifySession } from "@/hooks/useSpotifySession";
 
 export function SearchView() {
   const { actions } = usePlayer();
   const { user } = useAuth();
+  const spotifySession = useSpotifySession();
   const { addFavorite } = useFavorites();
   const { playlists, addTrackToPlaylist } = usePlaylists();
 
@@ -20,10 +22,73 @@ export function SearchView() {
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
 
+  const spotifyConnected = spotifySession.status === "connected";
+
+  // Reset state when switching source.
+  useEffect(() => {
+    setResults([]);
+    setError(null);
+    setLoading(false);
+    setSearched(false);
+  }, [spotifyConnected]);
+
+  // Jamendo search (no Spotify session): debounce + initial top tracks.
+  useEffect(() => {
+    if (spotifyConnected) return;
+    if (spotifySession.status === "loading") return;
+
+    let mounted = true;
+    const controller = new AbortController();
+    const q = query.trim();
+
+    setLoading(true);
+    setError(null);
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        const url = q
+          ? `/api/jamendo/search?q=${encodeURIComponent(q)}`
+          : "/api/jamendo/tracks?limit=20";
+
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) {
+          const payload = await res.json().catch(() => null);
+          throw new Error(payload?.error || "Error al buscar");
+        }
+
+        const data = await res.json();
+        const items = Array.isArray(data?.results) ? (data.results as ITrack[]) : [];
+
+        if (!mounted) return;
+        setResults(items);
+        setSearched(true);
+      } catch (err) {
+        if (!mounted) return;
+        // Abort is expected when typing.
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        console.error("Jamendo search error", err);
+        setError(err instanceof Error ? err.message : "Error al buscar");
+        setResults([]);
+        setSearched(true);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }, 400);
+
+    return () => {
+      mounted = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [query, spotifyConnected, spotifySession.status]);
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     const q = query.trim();
     if (!q) return;
+
+    // When Spotify is disconnected, Jamendo is handled by the debounced effect.
+    if (!spotifyConnected) return;
 
     setLoading(true);
     setError(null);
@@ -86,19 +151,24 @@ export function SearchView() {
 
         {loading && (
           <div className="flex items-center justify-center py-12 text-sm text-[var(--muted)]">
-            <Loader2 size={20} className="mr-2 animate-spin" /> Buscando en Spotify…
+            <Loader2 size={20} className="mr-2 animate-spin" />{" "}
+            {spotifyConnected ? "Buscando en Spotify…" : "Buscando en Jamendo…"}
           </div>
         )}
 
         {!loading && searched && results.length === 0 && !error && (
           <div className="py-12 text-center text-sm text-[var(--muted)]">
-            No se encontraron resultados para &quot;{query}&quot;
+            {query.trim()
+              ? `No se encontraron resultados para "${query}"`
+              : "No se encontraron resultados"}
           </div>
         )}
 
         {!loading && !searched && (
           <div className="py-12 text-center text-sm text-[var(--muted)]">
-            Escribe algo para buscar canciones, artistas o álbumes
+            {spotifyConnected
+              ? "Escribe algo para buscar canciones, artistas o álbumes"
+              : "Escribe algo para buscar en música libre (Jamendo)"}
           </div>
         )}
 
