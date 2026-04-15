@@ -154,10 +154,18 @@ export function AuthModalControlled({ open = true, onClose }: AuthModalProps) {
           </button>
         </div>
 
-        <div className="mt-4 space-y-3">
+        <form
+          className="mt-4 space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleSubmit();
+          }}
+        >
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-[var(--muted)]">Email</label>
+            <label htmlFor="auth-email" className="text-xs font-semibold text-[var(--muted)]">Email</label>
             <input
+              id="auth-email"
+              name="email"
               type="email"
               maxLength={254}
               value={email}
@@ -169,8 +177,10 @@ export function AuthModalControlled({ open = true, onClose }: AuthModalProps) {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-[var(--muted)]">Contrasena</label>
+            <label htmlFor="auth-password" className="text-xs font-semibold text-[var(--muted)]">Contrasena</label>
             <input
+              id="auth-password"
+              name="password"
               type="password"
               minLength={8}
               maxLength={20}
@@ -186,9 +196,9 @@ export function AuthModalControlled({ open = true, onClose }: AuthModalProps) {
           {error ? <p className="text-xs text-red-500">{error}</p> : null}
 
           <Button
+            type="submit"
             className="w-full"
             disabled={submitting}
-            onClick={() => void handleSubmit()}
           >
             {submitting ? "Procesando..." : mode === "login" ? "Iniciar sesion" : "Crear cuenta"}
           </Button>
@@ -198,7 +208,7 @@ export function AuthModalControlled({ open = true, onClose }: AuthModalProps) {
               ? "No tienes cuenta? Crea una en la pestaña Register."
               : "Al crear tu cuenta se iniciara sesion automaticamente."}
           </p>
-        </div>
+        </form>
       </div>
     </div>
   );
