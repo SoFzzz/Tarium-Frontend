@@ -37,6 +37,8 @@ export function GenresView({ spotifyConnected }: { spotifyConnected?: boolean })
   };
 
   const handleGenreClick = async (genre: (typeof GENRES)[number]) => {
+    if (!spotifyConnected) return;
+
     setLoadingGenreId(genre.id);
     try {
       const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(genre.name)}`);
@@ -47,7 +49,11 @@ export function GenresView({ spotifyConnected }: { spotifyConnected?: boolean })
       if (tracks.length > 0) {
         const shuffled = shuffleTracks(tracks);
         actions.loadQueue(shuffled);
-        await actions.play();
+        try {
+          await actions.play();
+        } catch {
+          // Ignore playback failures to avoid uncaught promise noise.
+        }
       }
     } catch (err) {
       console.error("Error loading genre tracks", err);
