@@ -22,6 +22,7 @@ import { GripVertical, Loader2, Trash2 } from "lucide-react";
 
 import type { ITrack } from "@/lib/player/types";
 import { fetchLyrics } from "@/lib/lyrics";
+import { useSpotifySession } from "@/hooks/useSpotifySession";
 import { usePlayer } from "@/providers/PlayerProvider";
 import { Slider } from "@/components/ui/slider";
 
@@ -37,11 +38,12 @@ type MobileTab = "current" | "queue";
 
 export function NowPlayingView() {
   const { state, actions } = usePlayer();
+  const spotifySession = useSpotifySession();
   const [mobileTab, setMobileTab] = useState<MobileTab>("current");
 
   const currentTrack = state.currentTrack;
   const queue = state.queue;
-  const currentTrackId = currentTrack?.id ?? null;
+  const currentTrackQueueItemId = currentTrack?.queueItemId ?? null;
   const progress = state.progressSeconds;
   const duration = state.durationSeconds;
   const [isSeeking, setIsSeeking] = useState(false);
@@ -70,7 +72,7 @@ export function NowPlayingView() {
       const canvas = document.createElement("canvas");
       canvas.width = 24;
       canvas.height = 24;
-      const ctx = canvas.getContext("2d");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) return;
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -168,10 +170,25 @@ export function NowPlayingView() {
         <div className={`${mobileTab === "queue" ? "block" : "hidden"} md:block`}>
           <QueuePanel
             queue={queue}
-            currentTrackId={currentTrackId}
-            onPlay={(id) => void actions.playById(id)}
+            currentTrackQueueItemId={currentTrackQueueItemId}
+            onPlay={(queueItemId) => {
+              const selected = queue.find(
+                (track) => (track.queueItemId ?? track.id) === queueItemId,
+              );
+              const isSpotifyTrack =
+                selected?.source === "spotify" ||
+                selected?.audioUrl?.startsWith("spotify:") === true;
+
+              if (isSpotifyTrack && spotifySession.status !== "connected") {
+                return;
+              }
+
+              void actions.playByQueueItemId(queueItemId).catch(() => {
+                // Ignore playback failures to avoid uncaught promise noise.
+              });
+            }}
             onReorder={(newOrder) => actions.setQueue(newOrder)}
-            onRemove={(id) => actions.removeTrack(id)}
+            onRemove={(queueItemId) => actions.removeTrack(queueItemId, "queueItemId")}
           />
         </div>
       </div>
@@ -286,23 +303,26 @@ function CurrentTrackPanel({
 
 function QueuePanel({
   queue,
-  currentTrackId,
+  currentTrackQueueItemId,
   onPlay,
   onReorder,
   onRemove,
 }: {
   queue: ITrack[];
-  currentTrackId: string | null;
-  onPlay: (id: string) => void;
+  currentTrackQueueItemId: string | null;
+  onPlay: (queueItemId: string) => void;
   onReorder: (tracks: ITrack[]) => void;
-  onRemove: (id: string) => void;
+  onRemove: (queueItemId: string) => void;
 }) {
   const [orderedQueue, setOrderedQueue] = useState<ITrack[]>(queue);
   useEffect(() => {
     setOrderedQueue(queue);
   }, [queue]);
 
-  const ids = useMemo(() => orderedQueue.map((track) => track.id), [orderedQueue]);
+  const ids = useMemo(
+    () => orderedQueue.map((track) => track.queueItemId ?? track.id),
+    [orderedQueue],
+  );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 8 } }),
@@ -312,8 +332,12 @@ function QueuePanel({
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIndex = orderedQueue.findIndex((track) => track.id === active.id);
-    const newIndex = orderedQueue.findIndex((track) => track.id === over.id);
+    const oldIndex = orderedQueue.findIndex(
+      (track) => (track.queueItemId ?? track.id) === active.id,
+    );
+    const newIndex = orderedQueue.findIndex(
+      (track) => (track.queueItemId ?? track.id) === over.id,
+    );
     if (oldIndex < 0 || newIndex < 0) return;
 
     const next = arrayMove(orderedQueue, oldIndex, newIndex);
@@ -338,9 +362,9 @@ function QueuePanel({
               <ul className="space-y-1">
                 {orderedQueue.map((track) => (
                   <QueueRow
-                    key={track.id}
+                    key={track.queueItemId ?? track.id}
                     track={track}
-                    isCurrent={track.id === currentTrackId}
+                    isCurrent={(track.queueItemId ?? track.id) === currentTrackQueueItemId}
                     onPlay={onPlay}
                     onRemove={onRemove}
                   />
@@ -362,11 +386,12 @@ function QueueRow({
 }: {
   track: ITrack;
   isCurrent: boolean;
-  onPlay: (id: string) => void;
-  onRemove: (id: string) => void;
+  onPlay: (queueItemId: string) => void;
+  onRemove: (queueItemId: string) => void;
 }) {
+  const queueItemId = track.queueItemId ?? track.id;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: track.id,
+    id: queueItemId,
   });
 
   const style: CSSProperties = {
@@ -393,7 +418,7 @@ function QueueRow({
         <GripVertical size={16} />
       </button>
 
-      <button type="button" onClick={() => onPlay(track.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+      <button type="button" onClick={() => onPlay(queueItemId)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <img src={track.thumbnailUrl} alt={track.title} className="h-10 w-10 rounded-lg object-cover" />
         <div className="min-w-0">
           <p className={`truncate text-[13px] font-semibold ${isCurrent ? "text-[var(--accent)]" : "text-[var(--foreground)]"}`}>
@@ -410,7 +435,7 @@ function QueueRow({
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          onRemove(track.id);
+          onRemove(queueItemId);
         }}
       >
         <Trash2 size={16} />
