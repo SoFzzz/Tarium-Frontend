@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
+import { sanitizeSpotifyUrlState } from '@/lib/auth/spotify-url-state';
+import { TARIUM_SESSION_COOKIE, TARIUM_SESSION_COOKIE_VALUE } from '@/lib/auth/session-marker';
 import { supabase } from '@/lib/supabase';
 
 interface AuthContextType {
@@ -19,10 +21,21 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const CLEAR_QUEUE_EVENT = "tarium:clear-queue";
 const SPOTIFY_AUTH_REQUIRED_EVENT = "tarium:spotify-auth-required";
 
+function syncTariumSessionMarker(user: User | null) {
+  const secureAttr = window.location.protocol === "https:" ? "; Secure" : "";
+
+  if (user) {
+    document.cookie =
+      `${TARIUM_SESSION_COOKIE}=${TARIUM_SESSION_COOKIE_VALUE}; Path=/; Max-Age=2592000; SameSite=Lax${secureAttr}`;
+    return;
+  }
+
+  document.cookie = `${TARIUM_SESSION_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secureAttr}`;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  // Solo para bootstrap: evitar flash de user=null con sesion existente.
   const [authLoading, setAuthLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const loading = authLoading || actionLoading;
@@ -35,11 +48,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       pathname === "/callback" || pathname === "/api/spotify/callback";
 
     const sanitizeHistoryEntry = () => {
-      const { pathname, search, hash } = window.location;
+      const { pathname } = window.location;
       if (!isTransientCallbackPath(pathname)) return;
 
-      const safeUrl = `/${search || ""}${hash || ""}`;
-      window.history.replaceState(null, "", safeUrl);
+      const { sanitizedUrl } = sanitizeSpotifyUrlState(window.location.href);
+      window.history.replaceState(null, "", sanitizedUrl);
     };
 
     sanitizeHistoryEntry();
@@ -57,12 +70,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) throw error;
         setSession(data.session);
         setUser(data.session?.user ?? null);
+        syncTariumSessionMarker(data.session?.user ?? null);
       } catch (err) {
         if (!alive) return;
         console.error('Error getting session:', err);
         setError('Error al obtener sesión');
         setSession(null);
         setUser(null);
+        syncTariumSessionMarker(null);
       } finally {
         if (!alive) return;
         setAuthLoading(false);
@@ -71,13 +86,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     void init();
 
-    // Suscribirse a cambios de autenticación
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!alive) return;
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
+      syncTariumSessionMarker(nextSession?.user ?? null);
       setAuthLoading(false);
       setActionLoading(false);
 
@@ -132,26 +147,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     setActionLoading(true);
     setError(null);
+
+    const signedOutUserId = user?.id ?? session?.user?.id ?? null;
+    const warnings: string[] = [];
+
     try {
       const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      if (error) {
+        warnings.push('supabase_signout_failed');
+        console.error('Sign out error:', error);
+      }
+    } catch (err: unknown) {
+      console.error('Sign out error:', err);
+      warnings.push('supabase_signout_failed');
+    }
 
-      await fetch('/api/spotify/logout', {
+    try {
+      const response = await fetch('/api/spotify/logout', {
         method: 'POST',
         credentials: 'include',
-      }).catch(() => null);
+      });
 
+      if (!response.ok) {
+        warnings.push('spotify_logout_failed');
+      }
+    } catch (err: unknown) {
+      console.error('Spotify logout error:', err);
+      warnings.push('spotify_logout_failed');
+    } finally {
       setSession(null);
       setUser(null);
-      window.dispatchEvent(new Event(CLEAR_QUEUE_EVENT));
+      syncTariumSessionMarker(null);
+      window.dispatchEvent(new CustomEvent(CLEAR_QUEUE_EVENT, {
+        detail: { userId: signedOutUserId },
+      }));
       window.dispatchEvent(new Event(SPOTIFY_AUTH_REQUIRED_EVENT));
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error al cerrar sesión';
-      setError(message);
-      console.error('Sign out error:', err);
-    } finally {
-      setActionLoading(false);
+
+      if (warnings.length > 0) {
+        console.warn('Logout global completed with warnings:', warnings);
+        setError('Sesión local cerrada, pero algunos servicios no respondieron.');
+      }
     }
+
+    setActionLoading(false);
   };
 
   return (
