@@ -1,5 +1,11 @@
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const useAuthMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/providers/AuthProvider", () => ({
+  useAuth: useAuthMock,
+}));
 
 import { useSpotifySession } from "@/hooks/useSpotifySession";
 
@@ -23,6 +29,10 @@ function HookHarness({
 describe("useSpotifySession", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    useAuthMock.mockReturnValue({
+      user: { id: "app-user" },
+      authLoading: false,
+    });
     window.history.replaceState({}, "", "/");
   });
 
@@ -85,7 +95,9 @@ describe("useSpotifySession", () => {
       expect(latest?.status).toBe("connected");
     });
 
-    window.dispatchEvent(new Event("tarium:spotify-auth-required"));
+    await act(async () => {
+      window.dispatchEvent(new Event("tarium:spotify-auth-required"));
+    });
 
     await waitFor(() => {
       expect(latest?.status).toBe("disconnected");
