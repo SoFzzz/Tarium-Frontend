@@ -1,8 +1,6 @@
 "use client";
 
-import { GripVertical, Heart, Play, Trash2, Download, Loader2 } from "lucide-react";
-import type { ISpotifyPlaylist } from "@/lib/spotify";
-import type { ITrack } from "@/lib/player/types";
+import { GripVertical, Heart, Play, Trash2 } from "lucide-react";
 import { canonicalTrackIdentity } from "@/lib/player/track-key";
 
 import {
@@ -45,9 +43,6 @@ type Props = {
   canAddCurrentTrack?: boolean;
   onToggleFavorite: (track: PlaylistTrack) => void | Promise<void>;
   onReorderTracks: (playlistId: string, newTracks: PlaylistTrack[]) => void | Promise<void>;
-  // Block 6: Spotify import
-  spotifyConnected?: boolean;
-  onImportSpotifyPlaylist?: (name: string, tracks: ITrack[]) => void | Promise<void>;
 };
 
 export function PlaylistsView({
@@ -67,8 +62,6 @@ export function PlaylistsView({
   canAddCurrentTrack,
   onToggleFavorite,
   onReorderTracks,
-  spotifyConnected,
-  onImportSpotifyPlaylist,
 }: Props) {
   const isAuthed = Boolean(authenticated);
   const [orderedTracks, setOrderedTracks] = useState<PlaylistTrack[]>(playlistTracks ?? []);
@@ -100,170 +93,111 @@ export function PlaylistsView({
     const next = arrayMove(orderedTracks, oldIndex, newIndex);
     setOrderedTracks(next);
 
-    // Defiere la notificacion para evitar updates cruzados durante el commit del DnD.
     Promise.resolve().then(() => void onReorderTracks(selectedPlaylistId, next));
-  };
-
-  // Spotify import state
-  const [spotifyPlaylists, setSpotifyPlaylists] = useState<ISpotifyPlaylist[]>([]);
-  const [loadingSpotify, setLoadingSpotify] = useState(false);
-  const [importingId, setImportingId] = useState<string | null>(null);
-  const [showSpotifySection, setShowSpotifySection] = useState(false);
-  const [spotifyError, setSpotifyError] = useState<string | null>(null);
-
-  const handleLoadSpotifyPlaylists = async () => {
-    setLoadingSpotify(true);
-    setSpotifyError(null);
-    setShowSpotifySection(true);
-    try {
-      const res = await fetch("/api/spotify/me/playlists");
-      if (!res.ok) {
-        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error || `HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      setSpotifyPlaylists(Array.isArray(data) ? data : []);
-    } catch (err) {
-      setSpotifyPlaylists([]);
-      setSpotifyError("No pudimos cargar tus playlists de Spotify. Verifica tu sesión y vuelve a intentar.");
-    } finally {
-      setLoadingSpotify(false);
-    }
-  };
-
-  const handleImportPlaylist = async (sp: ISpotifyPlaylist) => {
-    if (!onImportSpotifyPlaylist) return;
-    setImportingId(sp.id);
-    setSpotifyError(null);
-    try {
-      const res = await fetch(`/api/spotify/playlists/${sp.id}/tracks`);
-      const payload = (await res.json().catch(() => null)) as
-        | ITrack[]
-        | { items?: unknown[]; error?: unknown }
-        | null;
-
-      if (payload && !Array.isArray(payload) && payload.error) {
-        throw new Error(`spotify_playlist_tracks_failed:${String(payload.error)}`);
-      }
-
-      const tracks: ITrack[] = Array.isArray(payload) ? (payload as ITrack[]) : [];
-      if (tracks.length > 0) {
-        await onImportSpotifyPlaylist(sp.name, tracks);
-      } else {
-        throw new Error("spotify_playlist_tracks_empty");
-      }
-    } catch (err) {
-      // No console noise for expected Spotify failures.
-      setSpotifyError(
-        `No pudimos importar "${sp.name}". Reconecta Spotify y vuelve a intentar.`,
-      );
-    } finally {
-      setImportingId(null);
-    }
   };
 
   return (
     <div className="flex flex-col gap-4">
-    <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
-          Playlists
-        </p>
-        {isAuthed ? (
-          <Button size="sm" onClick={onCreatePlaylist}>
-            Nueva playlist
-          </Button>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span>
-                <Button size="sm" disabled className="opacity-40 cursor-not-allowed">
-                  Nueva playlist
-                </Button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>Inicia sesión para guardar</TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-      <div className="flex flex-col gap-4 text-xs sm:flex-row">
-        <div className="border-b border-[var(--line)] pb-3 sm:w-1/3 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-3">
-          {!isAuthed ? (
-            <p className="text-[var(--muted)]">Inicia sesión para guardar tus playlists y favoritos</p>
-          ) : playlists.length === 0 ? (
-            <p className="text-[var(--muted)]">Todavía no tienes playlists.</p>
+      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
+            Playlists
+          </p>
+          {isAuthed ? (
+            <Button size="sm" onClick={onCreatePlaylist}>
+              Nueva playlist
+            </Button>
           ) : (
-            <ul className="space-y-1">
-              {playlists.map((p) => (
-                <li key={p.id} className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    className={`flex w-full flex-1 items-center justify-between rounded-lg px-2 py-1.5 text-left hover:bg-[var(--surface-elevated)] ${
-                      selectedPlaylistId === p.id ? "bg-[var(--surface-elevated)]" : ""
-                    }`}
-                    onClick={() => onSelectPlaylist(p.id)}
-                  >
-                    <span className="truncate">{p.name}</span>
-                  </button>
-                  {isAuthed ? (
-                    <button
-                      type="button"
-                      className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-red-500 hover:text-red-500 sm:h-7 sm:w-7"
-                      onClick={() => onDeletePlaylist(p.id)}
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span>
-                          <button
-                            type="button"
-                            disabled
-                            className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] opacity-40 cursor-not-allowed sm:h-7 sm:w-7"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>Inicia sesión para guardar</TooltipContent>
-                    </Tooltip>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button size="sm" disabled className="opacity-40 cursor-not-allowed">
+                    Nueva playlist
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Inicia sesión para guardar</TooltipContent>
+            </Tooltip>
           )}
         </div>
-        <div className="flex-1 sm:pl-1">
-          {!isAuthed ? (
-            <p className="text-[var(--muted)] text-sm text-center mt-4">Inicia sesión para guardar tus playlists y favoritos</p>
-          ) : loadingTracks ? (
-            <p className="text-[var(--muted)]">Cargando canciones…</p>
-          ) : !selectedPlaylistId ? (
-            <p className="text-[var(--muted)]">Selecciona una playlist para ver sus canciones.</p>
-          ) : !playlistTracks || playlistTracks.length === 0 ? (
-            <p className="text-[var(--muted)]">Esta playlist está vacía.</p>
-          ) : (
-            <div className="max-h-[60vh] overflow-y-auto sm:max-h-64">
-              <div className="mb-2 flex items-center justify-between gap-2 text-xs">
-                <Button size="sm" variant="outline" onClick={() => onPlayAll()}>
-                  Reproducir playlist
-                </Button>
-                {onAddCurrentTrack && canAddCurrentTrack ? (
-                  <Button size="sm" variant="ghost" onClick={() => onAddCurrentTrack()}>
-                    Agregar track actual
+        <div className="flex flex-col gap-4 text-xs sm:flex-row">
+          <div className="border-b border-[var(--line)] pb-3 sm:w-1/3 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-3">
+            {!isAuthed ? (
+              <p className="text-[var(--muted)]">Inicia sesión para guardar tus playlists y favoritos</p>
+            ) : playlists.length === 0 ? (
+              <p className="text-[var(--muted)]">Todavía no tienes playlists.</p>
+            ) : (
+              <ul className="space-y-1">
+                {playlists.map((p) => (
+                  <li key={p.id} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className={`flex w-full flex-1 items-center justify-between rounded-lg px-2 py-1.5 text-left hover:bg-[var(--surface-elevated)] ${
+                        selectedPlaylistId === p.id ? "bg-[var(--surface-elevated)]" : ""
+                      }`}
+                      onClick={() => onSelectPlaylist(p.id)}
+                    >
+                      <span className="truncate">{p.name}</span>
+                    </button>
+                    {isAuthed ? (
+                      <button
+                        type="button"
+                        className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-red-500 hover:text-red-500 sm:h-7 sm:w-7"
+                        onClick={() => onDeletePlaylist(p.id)}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>
+                            <button
+                              type="button"
+                              disabled
+                              className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--line)] text-[var(--muted)] opacity-40 cursor-not-allowed sm:h-7 sm:w-7"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>Inicia sesión para guardar</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="flex-1 sm:pl-1">
+            {!isAuthed ? (
+              <p className="text-[var(--muted)] text-sm text-center mt-4">Inicia sesión para guardar tus playlists y favoritos</p>
+            ) : loadingTracks ? (
+              <p className="text-[var(--muted)]">Cargando canciones...</p>
+            ) : !selectedPlaylistId ? (
+              <p className="text-[var(--muted)]">Selecciona una playlist para ver sus canciones.</p>
+            ) : !playlistTracks || playlistTracks.length === 0 ? (
+              <p className="text-[var(--muted)]">Esta playlist está vacía.</p>
+            ) : (
+              <div className="max-h-[60vh] overflow-y-auto sm:max-h-64">
+                <div className="mb-2 flex items-center justify-between gap-2 text-xs">
+                  <Button size="sm" variant="outline" onClick={() => onPlayAll()}>
+                    Reproducir playlist
                   </Button>
-                ) : null}
-              </div>
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                modifiers={[restrictToVerticalAxis, restrictToParentElement]}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-                  <ul className="space-y-1 text-xs">
-                    {orderedTracks.map((t) => (
+                  {onAddCurrentTrack && canAddCurrentTrack ? (
+                    <Button size="sm" variant="ghost" onClick={() => onAddCurrentTrack()}>
+                      Agregar track actual
+                    </Button>
+                  ) : null}
+                </div>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+                    <ul className="space-y-1 text-xs">
+                      {orderedTracks.map((t) => (
                         <SortablePlaylistRow
                           key={t.id}
                           track={t}
@@ -273,84 +207,18 @@ export function PlaylistsView({
                           }
                           authenticated={isAuthed}
                           onPlayTrack={onPlayTrack}
-                        onToggleFavorite={onToggleFavorite}
-                        onRemoveTrack={onRemoveTrack}
-                      />
-                    ))}
-                  </ul>
-                </SortableContext>
-              </DndContext>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-
-    {/* Spotify import section */}
-    {spotifyConnected && onImportSpotifyPlaylist && (
-      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
-            Importar de Spotify
-          </p>
-          <Button
-            size="sm"
-            variant="outline"
-            className="hidden"
-            onClick={handleLoadSpotifyPlaylists}
-            disabled={loadingSpotify}
-          >
-            {loadingSpotify ? (
-              <><Loader2 size={14} className="animate-spin mr-1" /> Cargando…</>
-            ) : (
-              <><Download size={14} className="mr-1" /> Cargar mis playlists</>
+                          onToggleFavorite={onToggleFavorite}
+                          onRemoveTrack={onRemoveTrack}
+                        />
+                      ))}
+                    </ul>
+                  </SortableContext>
+                </DndContext>
+              </div>
             )}
-          </Button>
+          </div>
         </div>
-
-        {showSpotifySection && spotifyPlaylists.length === 0 && !loadingSpotify && (
-          <p className="text-xs text-[var(--muted)]">
-            {spotifyError ?? "No se encontraron playlists en tu cuenta de Spotify."}
-          </p>
-        )}
-
-        {showSpotifySection && spotifyError && spotifyPlaylists.length > 0 && (
-          <p className="text-xs text-red-400">{spotifyError}</p>
-        )}
-
-        {showSpotifySection && spotifyPlaylists.length > 0 && (
-          <ul className="space-y-1 text-xs max-h-64 overflow-y-auto">
-            {spotifyPlaylists.map((sp) => (
-              <li
-                key={sp.id}
-                className="group flex items-center gap-3 rounded-xl p-2 hover:bg-[var(--surface-elevated)] transition-colors"
-              >
-                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-[var(--line)]">
-                  <img src={sp.imageUrl} alt={sp.name} className="h-full w-full object-cover" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="truncate text-[13px] font-semibold">{sp.name}</p>
-                  <p className="truncate text-[11px] text-[var(--muted)]">{sp.tracksTotal} tracks</p>
-                </div>
-                <button
-                  type="button"
-                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-[var(--accent)] px-3 text-[11px] font-bold text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
-                  onClick={() => void handleImportPlaylist(sp)}
-                  disabled={importingId === sp.id}
-                >
-                  {importingId === sp.id ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <Download size={14} />
-                  )}
-                  Importar
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
-    )}
     </div>
   );
 }

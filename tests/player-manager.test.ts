@@ -10,6 +10,7 @@ class TestMediaAdapter implements MediaAdapter {
   public pause = vi.fn(async () => {});
   public setVolume = vi.fn((_v: number) => {});
   public seekTo = vi.fn((_s: number) => {});
+  public destroy = vi.fn(async () => {});
 }
 
 describe("PlayerManager", () => {
@@ -299,5 +300,33 @@ describe("PlayerManager", () => {
 
     manager.addToQueue(intentionalPlayableDuplicate, "search");
     expect(manager.getState().queue).toHaveLength(2);
+  });
+
+  it("fase 1 - stopAndClear detiene audio real y limpia cola", async () => {
+    const adapter = new TestMediaAdapter();
+    const manager = new PlayerManager(
+      [
+        {
+          id: "ja:start",
+          title: "Start",
+          artist: "Artist",
+          thumbnailUrl: "/placeholder.png",
+          objectUrl: "https://cdn.example.com/start.mp3",
+          source: "jamendo",
+          sourceType: "remote",
+        },
+      ],
+      adapter,
+    );
+
+    await manager.play();
+    await manager.stopAndClear();
+
+    const state = manager.getState();
+    expect(adapter.pause).toHaveBeenCalled();
+    expect(adapter.destroy).toHaveBeenCalled();
+    expect(state.queue).toHaveLength(0);
+    expect(state.currentTrack).toBeNull();
+    expect(state.isPlaying).toBe(false);
   });
 });

@@ -168,20 +168,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           ? (event.detail as { userId?: string | null })
           : null;
 
-      manager.restoreQueueWithoutCurrent([]);
-      lastQueueSigRef.current = "";
+      void manager.stopAndClear().finally(() => {
+        lastQueueSigRef.current = "";
 
-      try {
-        window.localStorage.removeItem(LEGACY_QUEUE_STORAGE_KEY);
-        if (user?.id) {
-          window.localStorage.removeItem(getQueueStorageKey(user.id));
+        try {
+          window.localStorage.removeItem(LEGACY_QUEUE_STORAGE_KEY);
+          if (user?.id) {
+            window.localStorage.removeItem(getQueueStorageKey(user.id));
+          }
+          if (detail?.userId) {
+            window.localStorage.removeItem(getQueueStorageKey(detail.userId));
+          }
+        } catch {
+          // ignore
         }
-        if (detail?.userId) {
-          window.localStorage.removeItem(getQueueStorageKey(detail.userId));
-        }
-      } catch {
-        // ignore
-      }
+      });
     };
 
     window.addEventListener(CLEAR_QUEUE_EVENT, clearQueue);

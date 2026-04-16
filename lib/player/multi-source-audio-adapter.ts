@@ -116,4 +116,22 @@ export class MultiSourceAudioAdapter implements MediaAdapter {
   ): void {
     this.timeUpdateHandler = handler;
   }
+
+  public async destroy(): Promise<void> {
+    const activeAdapter = this.active === "spotify" ? this.spotify : this.howler;
+
+    try {
+      await activeAdapter.pause();
+    } catch {
+      // Best-effort cleanup
+    }
+
+    try {
+      await activeAdapter.destroy?.();
+    } catch {
+      // Best-effort cleanup
+    }
+
+    this.active = "howler";
+  }
 }

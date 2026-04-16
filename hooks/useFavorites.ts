@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabase';
 import { canonicalTrackIdentity } from '@/lib/player/track-key';
@@ -26,6 +26,83 @@ interface UseFavorites {
   isFavorite: (trackId: string) => boolean;
 }
 
+type FavoritesStoreState = {
+  favorites: Favorite[];
+  loading: boolean;
+  error: string | null;
+  spotifyFavIds: Set<string>;
+};
+
+const FAVORITES_INITIAL_STATE: FavoritesStoreState = {
+  favorites: [],
+  loading: false,
+  error: null,
+  spotifyFavIds: new Set<string>(),
+};
+
+let favoritesStoreState: FavoritesStoreState = FAVORITES_INITIAL_STATE;
+const favoritesStoreListeners = new Set<() => void>();
+const pendingByTrack = new Set<string>();
+let pendingCount = 0;
+let hydratedUserId: string | null = null;
+let inFlightFavoritesFetch: Promise<void> | null = null;
+
+function emitFavoritesStore() {
+  for (const listener of favoritesStoreListeners) {
+    listener();
+  }
+}
+
+function subscribeFavoritesStore(listener: () => void) {
+  favoritesStoreListeners.add(listener);
+  return () => {
+    favoritesStoreListeners.delete(listener);
+  };
+}
+
+function getFavoritesStoreSnapshot(): FavoritesStoreState {
+  return favoritesStoreState;
+}
+
+function updateFavoritesStore(updater: (prev: FavoritesStoreState) => FavoritesStoreState) {
+  favoritesStoreState = updater(favoritesStoreState);
+  emitFavoritesStore();
+}
+
+function setFavoritesStoreError(error: string | null) {
+  updateFavoritesStore((prev) => ({ ...prev, error }));
+}
+
+function startPending() {
+  pendingCount += 1;
+  updateFavoritesStore((prev) => ({ ...prev, loading: true }));
+}
+
+function endPending() {
+  pendingCount = Math.max(0, pendingCount - 1);
+  if (pendingCount === 0) {
+    updateFavoritesStore((prev) => ({ ...prev, loading: false }));
+  }
+}
+
+function resetFavoritesStore() {
+  pendingByTrack.clear();
+  pendingCount = 0;
+  inFlightFavoritesFetch = null;
+  favoritesStoreState = {
+    favorites: [],
+    loading: false,
+    error: null,
+    spotifyFavIds: new Set<string>(),
+  };
+  emitFavoritesStore();
+}
+
+export function __resetFavoritesStoreForTests() {
+  hydratedUserId = null;
+  resetFavoritesStore();
+}
+
 function isDuplicateFavoriteError(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false;
 
@@ -44,112 +121,130 @@ function isDuplicateFavoriteError(err: unknown): boolean {
 
 export function useFavorites(): UseFavorites {
   const { session, user, authLoading } = useAuth();
-  const [favorites, setFavorites] = useState<Favorite[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [spotifyFavIds, setSpotifyFavIds] = useState<Set<string>>(new Set());
-  const favoritesRef = useRef<Favorite[]>([]);
-  const pendingByTrack = useRef<Set<string>>(new Set());
-  const pendingCount = useRef(0);
-
+  const store = useSyncExternalStore(
+    subscribeFavoritesStore,
+    getFavoritesStoreSnapshot,
+    getFavoritesStoreSnapshot,
+  );
   const userId = session?.user?.id as string | undefined;
 
-  useEffect(() => {
-    favoritesRef.current = favorites;
-  }, [favorites]);
-
-  const startPending = useCallback(() => {
-    pendingCount.current += 1;
-    setLoading(true);
-  }, []);
-
-  const endPending = useCallback(() => {
-    pendingCount.current = Math.max(0, pendingCount.current - 1);
-    if (pendingCount.current === 0) {
-      setLoading(false);
-    }
-  }, []);
-
   const getFavorites = useCallback(async () => {
-    startPending();
-    setError(null);
-
-    try {
-      // Sin login: no montar/llamar a queries de Supabase.
-      if (!user) {
-        setFavorites([]);
-        return;
-      }
-
-      if (!userId) {
-        setFavorites([]);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('favorites')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setFavorites((data ?? []) as Favorite[]);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al obtener favoritos';
-      setError(message);
-      console.error('Error fetching favorites from Supabase:', err);
-    } finally {
-      endPending();
+    if (inFlightFavoritesFetch) {
+      await inFlightFavoritesFetch;
+      return;
     }
-  }, [user, userId, startPending, endPending]);
+
+    startPending();
+    setFavoritesStoreError(null);
+
+    const request = (async () => {
+      try {
+        if (!user || !userId) {
+          resetFavoritesStore();
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from('favorites')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        updateFavoritesStore((prev) => ({
+          ...prev,
+          favorites: (data ?? []) as Favorite[],
+          spotifyFavIds: new Set<string>(),
+        }));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Error al obtener favoritos';
+        setFavoritesStoreError(message);
+        console.error('Error fetching favorites from Supabase:', err);
+      } finally {
+        inFlightFavoritesFetch = null;
+        endPending();
+      }
+    })();
+
+    inFlightFavoritesFetch = request;
+    await request;
+  }, [user, userId]);
 
   const addFavorite = useCallback(
     async (track: Omit<Favorite, 'id' | 'user_id' | 'created_at'>): Promise<Favorite | null> => {
       const incomingIdentity = canonicalTrackIdentity(track.track_id);
+      const existing = getFavoritesStoreSnapshot().favorites.find(
+        (f) => canonicalTrackIdentity(f.track_id) === incomingIdentity,
+      );
 
-      if (pendingByTrack.current.has(incomingIdentity)) {
-        return (
-          favoritesRef.current.find(
-            (f) => canonicalTrackIdentity(f.track_id) === incomingIdentity
-          ) ?? null
-        );
+      if (pendingByTrack.has(incomingIdentity)) {
+        return existing ?? null;
       }
 
-      if (
-        favoritesRef.current.some(
-          (f) => canonicalTrackIdentity(f.track_id) === incomingIdentity
-        )
-      ) {
-        return (
-          favoritesRef.current.find(
-            (f) => canonicalTrackIdentity(f.track_id) === incomingIdentity
-          ) ?? null
-        );
+      if (existing) {
+        return existing;
       }
 
-      pendingByTrack.current.add(incomingIdentity);
+      pendingByTrack.add(incomingIdentity);
       startPending();
-      setError(null);
+      setFavoritesStoreError(null);
+
+      const optimisticFavorite: Favorite = {
+        id: `optimistic-${userId ?? 'anon'}-${incomingIdentity}`,
+        user_id: userId ?? 'unknown',
+        track_id: track.track_id,
+        title: track.title,
+        artist: track.artist,
+        thumbnail_url: track.thumbnail_url,
+        created_at: new Date().toISOString(),
+      };
+
+      updateFavoritesStore((prev) => ({
+        ...prev,
+        favorites: [
+          optimisticFavorite,
+          ...prev.favorites.filter(
+            (f) => canonicalTrackIdentity(f.track_id) !== incomingIdentity,
+          ),
+        ],
+      }));
 
       try {
         if (!user) {
-          setError('No hay sesion activa');
+          updateFavoritesStore((prev) => ({
+            ...prev,
+            favorites: prev.favorites.filter((f) => f.id !== optimisticFavorite.id),
+          }));
+          setFavoritesStoreError('No hay sesion activa');
           return null;
         }
 
         if (!userId) {
-          setError('No hay sesion activa');
+          updateFavoritesStore((prev) => ({
+            ...prev,
+            favorites: prev.favorites.filter((f) => f.id !== optimisticFavorite.id),
+          }));
+          setFavoritesStoreError('No hay sesion activa');
           return null;
         }
 
         const { data: authData, error: authError } = await supabase.auth.getUser();
         if (authError) {
-          setError(authError.message);
+          updateFavoritesStore((prev) => ({
+            ...prev,
+            favorites: prev.favorites.filter((f) => f.id !== optimisticFavorite.id),
+          }));
+          setFavoritesStoreError(authError.message);
           return null;
         }
         const authUserId = authData.user?.id;
         if (!authUserId) {
-          setError('No hay sesion activa');
+          updateFavoritesStore((prev) => ({
+            ...prev,
+            favorites: prev.favorites.filter((f) => f.id !== optimisticFavorite.id),
+          }));
+          setFavoritesStoreError('No hay sesion activa');
           return null;
         }
 
@@ -184,70 +279,110 @@ export function useFavorites(): UseFavorites {
               created_at: new Date().toISOString(),
             };
 
-            setFavorites((prev) => [existing, ...prev.filter((f) => f.track_id !== existing.track_id)]);
+            updateFavoritesStore((prev) => ({
+              ...prev,
+              favorites: [
+                existing,
+                ...prev.favorites.filter(
+                  (f) => canonicalTrackIdentity(f.track_id) !== incomingIdentity,
+                ),
+              ],
+            }));
             return existing;
           }
 
           const message = error instanceof Error ? error.message : 'Error al agregar favorito';
-          setError(message);
+          updateFavoritesStore((prev) => ({
+            ...prev,
+            favorites: prev.favorites.filter((f) => f.id !== optimisticFavorite.id),
+          }));
+          setFavoritesStoreError(message);
           console.error('Error adding favorite in Supabase:', error);
           return null;
         }
 
         const created = data as Favorite;
-        setFavorites((prev) => [created, ...prev.filter((f) => f.track_id !== created.track_id)]);
+        updateFavoritesStore((prev) => ({
+          ...prev,
+          favorites: [
+            created,
+            ...prev.favorites.filter(
+              (f) => canonicalTrackIdentity(f.track_id) !== incomingIdentity,
+            ),
+          ],
+        }));
 
         return created;
       } catch (err) {
         if (isDuplicateFavoriteError(err)) {
-          return (
-            favoritesRef.current.find(
-              (f) => canonicalTrackIdentity(f.track_id) === incomingIdentity
-            ) ?? null
-          );
+          return getFavoritesStoreSnapshot().favorites.find(
+            (f) => canonicalTrackIdentity(f.track_id) === incomingIdentity,
+          ) ?? null;
         }
 
         const message = err instanceof Error ? err.message : 'Error al agregar favorito';
-        setError(message);
+        updateFavoritesStore((prev) => ({
+          ...prev,
+          favorites: prev.favorites.filter((f) => f.id !== optimisticFavorite.id),
+        }));
+        setFavoritesStoreError(message);
         console.error('Error adding favorite in Supabase:', err);
         return null;
       } finally {
-        pendingByTrack.current.delete(incomingIdentity);
+        pendingByTrack.delete(incomingIdentity);
         endPending();
       }
     },
-    [user, userId, startPending, endPending]
+    [user, userId]
   );
 
   const removeFavorite = useCallback(
     async (trackId: string): Promise<void> => {
       const identity = canonicalTrackIdentity(trackId);
-      const matchedTrackId =
-        favoritesRef.current.find((f) => canonicalTrackIdentity(f.track_id) === identity)?.track_id ??
-        trackId;
+      const matchedFavorite = getFavoritesStoreSnapshot().favorites.find(
+        (f) => canonicalTrackIdentity(f.track_id) === identity,
+      );
+      const matchedTrackId = matchedFavorite?.track_id ?? trackId;
 
       startPending();
-      setError(null);
+      setFavoritesStoreError(null);
+
+      updateFavoritesStore((prev) => ({
+        ...prev,
+        favorites: prev.favorites.filter((f) => canonicalTrackIdentity(f.track_id) !== identity),
+      }));
 
       try {
         if (!user) {
-          setError('No hay sesion activa');
+          if (matchedFavorite) {
+            updateFavoritesStore((prev) => ({ ...prev, favorites: [matchedFavorite, ...prev.favorites] }));
+          }
+          setFavoritesStoreError('No hay sesion activa');
           return;
         }
 
         if (!userId) {
-          setError('No hay sesion activa');
+          if (matchedFavorite) {
+            updateFavoritesStore((prev) => ({ ...prev, favorites: [matchedFavorite, ...prev.favorites] }));
+          }
+          setFavoritesStoreError('No hay sesion activa');
           return;
         }
 
         const { data: authData, error: authError } = await supabase.auth.getUser();
         if (authError) {
-          setError(authError.message);
+          if (matchedFavorite) {
+            updateFavoritesStore((prev) => ({ ...prev, favorites: [matchedFavorite, ...prev.favorites] }));
+          }
+          setFavoritesStoreError(authError.message);
           return;
         }
         const authUserId = authData.user?.id;
         if (!authUserId) {
-          setError('No hay sesion activa');
+          if (matchedFavorite) {
+            updateFavoritesStore((prev) => ({ ...prev, favorites: [matchedFavorite, ...prev.favorites] }));
+          }
+          setFavoritesStoreError('No hay sesion activa');
           return;
         }
 
@@ -259,52 +394,58 @@ export function useFavorites(): UseFavorites {
 
         if (error) {
           const message = error instanceof Error ? error.message : 'Error al remover favorito';
-          setError(message);
+          if (matchedFavorite) {
+            updateFavoritesStore((prev) => ({ ...prev, favorites: [matchedFavorite, ...prev.favorites] }));
+          }
+          setFavoritesStoreError(message);
           console.error('Error removing favorite from Supabase:', error);
           return;
         }
-
-        setFavorites((prev) =>
-          prev.filter((f) => canonicalTrackIdentity(f.track_id) !== identity)
-        );
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error al remover favorito';
-        setError(message);
+        if (matchedFavorite) {
+          updateFavoritesStore((prev) => ({ ...prev, favorites: [matchedFavorite, ...prev.favorites] }));
+        }
+        setFavoritesStoreError(message);
         console.error('Error removing favorite from Supabase:', err);
       } finally {
         endPending();
       }
     },
-    [user, userId, startPending, endPending]
+    [user, userId]
   );
 
   const isFavorite = useCallback(
     (trackId: string) => {
       const identity = canonicalTrackIdentity(trackId);
-      return favorites.some((f) => canonicalTrackIdentity(f.track_id) === identity);
+      return getFavoritesStoreSnapshot().favorites.some(
+        (f) => canonicalTrackIdentity(f.track_id) === identity,
+      );
     },
-    [favorites]
+    []
   );
 
   useEffect(() => {
-    // Esperar a que auth resuelva la sesion inicial para evitar limpiar el estado
-    // si hay una sesion persistida (flash de user=null).
     if (authLoading) return;
 
+    const nextUserId = user?.id ?? null;
+    if (nextUserId !== hydratedUserId) {
+      hydratedUserId = nextUserId;
+      resetFavoritesStore();
+    }
+
     if (!user) {
-      setFavorites([]);
       return;
     }
 
     void getFavorites();
-    setSpotifyFavIds(new Set());
   }, [user, authLoading, getFavorites]);
 
   return {
-    favorites,
-    loading,
-    error,
-    spotifyFavIds,
+    favorites: store.favorites,
+    loading: store.loading,
+    error: store.error,
+    spotifyFavIds: store.spotifyFavIds,
     getFavorites,
     addFavorite,
     removeFavorite,

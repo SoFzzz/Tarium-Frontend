@@ -44,43 +44,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let alive = true;
 
-    const isTransientCallbackPath = (pathname: string) =>
-      pathname === "/callback" || pathname === "/api/spotify/callback";
-
     const sanitizeHistoryEntry = () => {
-      const { pathname } = window.location;
-      if (!isTransientCallbackPath(pathname)) return;
+      const { changed, sanitizedUrl } = sanitizeSpotifyUrlState(window.location.href);
+      if (changed) {
+        window.history.replaceState(null, "", sanitizedUrl);
+      }
+    };
 
-      const { sanitizedUrl } = sanitizeSpotifyUrlState(window.location.href);
-      window.history.replaceState(null, "", sanitizedUrl);
+    const applySessionState = (nextSession: Session | null) => {
+      if (!alive) return;
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+      syncTariumSessionMarker(nextSession?.user ?? null);
+      setAuthLoading(false);
+    };
+
+    const revalidateSessionState = async () => {
+      sanitizeHistoryEntry();
+
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        applySessionState(data.session);
+      } catch (err) {
+        if (!alive) return;
+        console.error('Error refreshing session:', err);
+        setSession(null);
+        setUser(null);
+        syncTariumSessionMarker(null);
+        setAuthLoading(false);
+      }
     };
 
     sanitizeHistoryEntry();
 
     const handlePopState = () => {
-      sanitizeHistoryEntry();
+      void revalidateSessionState();
+    };
+
+    const handlePageShow = () => {
+      void revalidateSessionState();
     };
 
     window.addEventListener("popstate", handlePopState);
+    window.addEventListener("pageshow", handlePageShow);
 
     const init = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession();
-        if (!alive) return;
-        if (error) throw error;
-        setSession(data.session);
-        setUser(data.session?.user ?? null);
-        syncTariumSessionMarker(data.session?.user ?? null);
+        await revalidateSessionState();
       } catch (err) {
         if (!alive) return;
         console.error('Error getting session:', err);
         setError('Error al obtener sesión');
-        setSession(null);
-        setUser(null);
-        syncTariumSessionMarker(null);
-      } finally {
-        if (!alive) return;
-        setAuthLoading(false);
       }
     };
 
@@ -105,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       alive = false;
       subscription?.unsubscribe();
       window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("pageshow", handlePageShow);
     };
   }, []);
 

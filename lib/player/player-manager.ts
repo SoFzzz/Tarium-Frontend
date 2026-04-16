@@ -75,6 +75,17 @@ export class PlayerManager {
     this.notify();
   }
 
+  public async stopAndClear(): Promise<void> {
+    await this.destroyAdapter();
+    this.playlist.clear();
+    this.isPlaying = false;
+    this.loading = false;
+    this.progressSeconds = 0;
+    this.durationSeconds = 0;
+    this.error = null;
+    this.notify();
+  }
+
   /** Reemplaza por completo la cola actual con la nueva lista. */
   public setQueue(tracks: ITrack[]): void {
     const currentQueueItemId = this.playlist.getCurrent()?.queueItemId ?? null;
@@ -607,6 +618,20 @@ export class PlayerManager {
       }
     } catch {
       // best-effort pause
+    }
+  }
+
+  private async destroyAdapter(): Promise<void> {
+    try {
+      await this.mediaAdapter?.pause();
+    } catch {
+      // best-effort pause
+    }
+
+    try {
+      await this.mediaAdapter?.destroy?.();
+    } catch {
+      // best-effort destroy
     }
   }
 

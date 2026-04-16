@@ -24,7 +24,7 @@ export function SearchView() {
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
 
-  const spotifyConnected = spotifySession.status === "connected";
+  const spotifyConnected = spotifySession.status === "connected" || spotifySession.status === "connecting";
 
   // Reset state when switching source.
   useEffect(() => {
@@ -37,7 +37,6 @@ export function SearchView() {
   // Jamendo search (no Spotify session): debounce + initial top tracks.
   useEffect(() => {
     if (spotifyConnected) return;
-    if (spotifySession.status === "loading") return;
 
     let mounted = true;
     const controller = new AbortController();

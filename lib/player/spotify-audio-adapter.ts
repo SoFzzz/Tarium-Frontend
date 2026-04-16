@@ -383,6 +383,13 @@ export class SpotifyAudioAdapter implements MediaAdapter {
     } catch {
       // Ignore errors when pausing during destroy
     }
+    try {
+      this.player?.disconnect();
+    } catch {
+      // Ignore disconnect errors during destroy
+    }
+    this.player = null;
+    this.deviceId = null;
     this.lastTrackUri = null;
     this.hadProgressSincePlay = false;
     this.lastPaused = null;

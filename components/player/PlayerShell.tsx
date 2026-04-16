@@ -218,9 +218,11 @@ export function PlayerShell() {
   const isSpotifyTrack = (track: ITrack | null | undefined) =>
     Boolean(track && (track.source === "spotify" || track.audioUrl?.startsWith("spotify:") === true));
 
+  const isSpotifyConnected = spotifySession.status === "connected" || spotifySession.status === "connecting";
+
   const ensureSpotifyPlaybackAllowed = (track: ITrack | null | undefined) => {
     if (!isSpotifyTrack(track)) return true;
-    if (spotifySession.status === "connected") return true;
+    if (isSpotifyConnected) return true;
     setSpotifyPlaybackNotice("Reconecta Spotify para reproducir esta pista.");
     return false;
   };
@@ -882,6 +884,12 @@ export function PlayerShell() {
             </div>
           ) : null}
 
+          {spotifySession.warning ? (
+            <div className="mx-4 mt-3 rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200 sm:mx-6">
+              {spotifySession.warning}
+            </div>
+          ) : null}
+
           {spotifyAccessStage === "requires_auth" ? (
             <div className="mx-4 mt-3 flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-4 sm:mx-6 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -905,7 +913,7 @@ export function PlayerShell() {
                   Tu sesión de Tarium ya está lista
                 </p>
                 <p className="mt-1 text-xs text-[var(--muted)]">
-                  Conecta Spotify para desbloquear búsquedas, recomendaciones e importación de playlists.
+                  Conecta Spotify para desbloquear búsquedas y recomendaciones.
                 </p>
               </div>
               <Button size="sm" variant="outline" onClick={handleSpotifyLogin}>
@@ -1202,25 +1210,6 @@ export function PlayerShell() {
                         playlistId,
                         newTracks.map((track) => track.id),
                       );
-                    }}
-                    spotifyConnected={spotifySession.status === "connected"}
-                    onImportSpotifyPlaylist={async (name, tracks) => {
-                      if (!user) {
-                        setAuthModalOpen(true);
-                        return;
-                      }
-                      const pl = await createPlaylist(name);
-                      if (!pl) return;
-                      for (const t of tracks) {
-                        rememberTrackPayload(t);
-                        await addTrackToPlaylist(pl.id, {
-                          track_id: toTrackStorageId(t),
-                          title: t.title,
-                          artist: t.artist,
-                          thumbnail_url: t.thumbnailUrl,
-                          duration_seconds: t.durationInSeconds,
-                        });
-                      }
                     }}
                   />
                 )}

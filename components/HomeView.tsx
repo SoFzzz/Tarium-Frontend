@@ -6,7 +6,7 @@ import { Play } from "lucide-react";
 import { usePlayer } from "@/providers/PlayerProvider";
 
 interface SpotifySessionProp {
-  status: "loading" | "connected" | "disconnected" | "error";
+  status: "loading" | "connecting" | "connected" | "disconnected" | "error";
 }
 
 export function HomeView({
@@ -20,7 +20,10 @@ export function HomeView({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (session.status === "loading") return;
+    if (session.status === "loading" || session.status === "connecting") {
+      setLoading(false);
+      return;
+    }
 
     let isMounted = true;
     setLoading(true);
@@ -113,6 +116,12 @@ export function HomeView({
       {session.status === "loading" && (
         <div className="flex flex-1 items-center justify-center text-sm text-[var(--muted)]">
           Cargando biblioteca...
+        </div>
+      )}
+
+      {session.status === "connecting" && (
+        <div className="flex flex-1 items-center justify-center text-sm text-[var(--muted)]">
+          Conectando con Spotify...
         </div>
       )}
 

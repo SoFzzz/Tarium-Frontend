@@ -130,4 +130,74 @@ describe("AuthProvider signOut", () => {
     window.removeEventListener("tarium:clear-queue", clearQueueListener);
     window.removeEventListener("tarium:spotify-auth-required", spotifyListener);
   });
+
+  it("fase 3 - revalida la sesion real en popstate", async () => {
+    let sessionAvailable = true;
+    mockGetSession.mockImplementation(async () => ({
+      data: {
+        session: sessionAvailable ? { user: { id: "user-1", email: "user@test.com" } } : null,
+      },
+      error: null,
+    }));
+
+    let latest: ReturnType<typeof useAuth> | null = null;
+    render(
+      <AuthProvider>
+        <AuthHarness
+          onRender={(value) => {
+            latest = value;
+          }}
+        />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(latest?.user?.id).toBe("user-1");
+    });
+
+    sessionAvailable = false;
+
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+
+    await waitFor(() => {
+      expect(latest?.user).toBeNull();
+    });
+  });
+
+  it("fase 3 - revalida la sesion real en pageshow para bfcache", async () => {
+    let sessionAvailable = true;
+    mockGetSession.mockImplementation(async () => ({
+      data: {
+        session: sessionAvailable ? { user: { id: "user-1", email: "user@test.com" } } : null,
+      },
+      error: null,
+    }));
+
+    let latest: ReturnType<typeof useAuth> | null = null;
+    render(
+      <AuthProvider>
+        <AuthHarness
+          onRender={(value) => {
+            latest = value;
+          }}
+        />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(latest?.user?.id).toBe("user-1");
+    });
+
+    sessionAvailable = false;
+
+    await act(async () => {
+      window.dispatchEvent(new Event("pageshow"));
+    });
+
+    await waitFor(() => {
+      expect(latest?.user).toBeNull();
+    });
+  });
 });
