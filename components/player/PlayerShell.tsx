@@ -153,6 +153,8 @@ export function PlayerShell() {
     hasAppSession: Boolean(user),
     spotifyStatus: spotifySession.status,
   });
+  const spotifyConnectedProfile =
+    spotifySession.status === "connected" ? spotifySession.me : null;
   const {
     playlists,
     createPlaylist,
@@ -807,18 +809,18 @@ export function PlayerShell() {
             <div className="flex items-center gap-4">
 
               <div className="hidden items-center gap-2 sm:flex">
-                {spotifyAccessStage === "connected" ? (
+                {spotifyConnectedProfile ? (
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface-elevated)] px-3 py-2 text-xs text-[var(--muted)]">
-                      {spotifySession.me.avatarUrl ? (
+                      {spotifyConnectedProfile.avatarUrl ? (
                         <img
-                          src={spotifySession.me.avatarUrl}
-                          alt={spotifySession.me.displayName ?? "Spotify"}
+                          src={spotifyConnectedProfile.avatarUrl}
+                          alt={spotifyConnectedProfile.displayName ?? "Spotify"}
                           className="h-5 w-5 rounded-full object-cover"
                         />
                       ) : null}
                       <span className="max-w-[10rem] truncate">
-                        {spotifySession.me.displayName ?? "Spotify conectado"}
+                        {spotifyConnectedProfile.displayName ?? "Spotify conectado"}
                       </span>
                     </div>
 
