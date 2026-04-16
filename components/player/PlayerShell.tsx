@@ -64,6 +64,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useTheme } from "next-themes";
 import { AuthModalControlled } from "@/components/auth/AuthModal";
 import { useSpotifySession } from "@/hooks/useSpotifySession";
+import { getSpotifyAccessStage } from "@/lib/auth/spotify-access";
 import { HomeView } from "@/components/HomeView";
 import { NowPlayingView } from "@/components/NowPlayingView";
 import { GenresView } from "@/components/GenresView";
@@ -148,6 +149,10 @@ export function PlayerShell() {
   const { state, actions } = usePlayer();
   const { user, signOut } = useAuth();
   const spotifySession = useSpotifySession();
+  const spotifyAccessStage = getSpotifyAccessStage({
+    hasAppSession: Boolean(user),
+    spotifyStatus: spotifySession.status,
+  });
   const {
     playlists,
     createPlaylist,
@@ -671,6 +676,11 @@ export function PlayerShell() {
   };
 
   const handleSpotifyLogin = () => {
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+
     try {
       const currentQueue = actions.getState().queue.filter(isTrackValidAcrossSessions);
       if (currentQueue.length > 0) {
@@ -797,7 +807,7 @@ export function PlayerShell() {
             <div className="flex items-center gap-4">
 
               <div className="hidden items-center gap-2 sm:flex">
-                {spotifySession.status === "connected" ? (
+                {spotifyAccessStage === "connected" ? (
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface-elevated)] px-3 py-2 text-xs text-[var(--muted)]">
                       {spotifySession.me.avatarUrl ? (
@@ -816,14 +826,23 @@ export function PlayerShell() {
                       Logout Spotify
                     </Button>
                   </div>
+                ) : spotifyAccessStage === "requires_auth" ? (
+                  <div className="items-center gap-3 sm:flex">
+                    <p className="max-w-xs text-right text-xs text-[var(--muted)]">
+                      Inicia sesión en Tarium para conectar tu música.
+                    </p>
+                    <Button size="sm" variant="outline" disabled>
+                      Spotify bloqueado
+                    </Button>
+                  </div>
                 ) : (
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={spotifySession.status === "loading"}
+                    disabled={spotifyAccessStage === "loading"}
                     onClick={handleSpotifyLogin}
                   >
-                    {spotifySession.status === "loading" ? "Spotify..." : "Conectar con Spotify"}
+                    {spotifyAccessStage === "loading" ? "Spotify..." : "Conectar Spotify"}
                   </Button>
                 )}
               </div>
@@ -858,6 +877,38 @@ export function PlayerShell() {
           {spotifyPlaybackNotice ? (
             <div className="mx-4 mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 sm:mx-6">
               {spotifyPlaybackNotice}
+            </div>
+          ) : null}
+
+          {spotifyAccessStage === "requires_auth" ? (
+            <div className="mx-4 mt-3 flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-4 sm:mx-6 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-[var(--foreground)]">
+                  Inicia sesión en Tarium para conectar tu música
+                </p>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  Primero activa tu sesión base y luego podrás vincular Spotify.
+                </p>
+              </div>
+              <Button size="sm" onClick={() => setAuthModalOpen(true)}>
+                Iniciar sesión
+              </Button>
+            </div>
+          ) : null}
+
+          {spotifyAccessStage === "ready" ? (
+            <div className="mx-4 mt-3 flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-4 sm:mx-6 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-[var(--foreground)]">
+                  Tu sesión de Tarium ya está lista
+                </p>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  Conecta Spotify para desbloquear búsquedas, recomendaciones e importación de playlists.
+                </p>
+              </div>
+              <Button size="sm" variant="outline" onClick={handleSpotifyLogin}>
+                Conectar Spotify
+              </Button>
             </div>
           ) : null}
 

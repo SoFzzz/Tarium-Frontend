@@ -12,8 +12,13 @@ type PlayerContextValue = ReturnType<typeof usePlayerManager>;
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
-const QUEUE_STORAGE_KEY = "tarium.queue";
+const QUEUE_STORAGE_KEY_PREFIX = "tarium.queue";
+const LEGACY_QUEUE_STORAGE_KEY = QUEUE_STORAGE_KEY_PREFIX;
 const CLEAR_QUEUE_EVENT = "tarium:clear-queue";
+
+function getQueueStorageKey(userId: string): string {
+  return `${QUEUE_STORAGE_KEY_PREFIX}:${userId}`;
+}
 
 function isTrackValidAcrossSessions(track: ITrack): boolean {
   if (track.sourceType === "local" || track.source === "local") return false;
@@ -84,7 +89,7 @@ function queueSignature(queue: ITrack[]): string {
 }
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, authLoading } = useAuth();
   const [manager] = useState(
     () => new PlayerManager([], new MultiSourceAudioAdapter()),
   );
@@ -96,12 +101,38 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let alive = true;
 
-    const rehydrateQueue = async () => {
-      // Rehydrate queue after full navigations (e.g. Spotify OAuth redirect).
-      try {
-        const saved = safeParseQueue(window.localStorage.getItem(QUEUE_STORAGE_KEY));
-        if (saved.length === 0 || manager.getState().queue.length > 0) return;
+    const syncQueueForSession = async () => {
+      if (authLoading) return;
 
+      const currentUserId = user?.id ?? null;
+      const previousUserId = lastUserIdRef.current;
+
+      try {
+        window.localStorage.removeItem(LEGACY_QUEUE_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
+
+      if (!currentUserId) {
+        if (previousUserId) {
+          try {
+            window.localStorage.removeItem(getQueueStorageKey(previousUserId));
+          } catch {
+            // ignore
+          }
+        }
+
+        if (!alive) return;
+        manager.restoreQueueWithoutCurrent([]);
+        lastQueueSigRef.current = "";
+        lastUserIdRef.current = null;
+        return;
+      }
+
+      if (previousUserId === currentUserId) return;
+
+      try {
+        const saved = safeParseQueue(window.localStorage.getItem(getQueueStorageKey(currentUserId)));
         let spotifyConnected = false;
         try {
           const res = await fetch("/api/spotify/me", { cache: "no-store" });
@@ -114,28 +145,40 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (!alive) return;
 
         const restored = saved.filter((track) => canRestoreTrack(track, spotifyConnected));
-        if (restored.length > 0) {
-          manager.restoreQueueWithoutCurrent(restored);
-        }
-
-        window.localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(restored));
+        manager.restoreQueueWithoutCurrent(restored);
+        lastQueueSigRef.current = queueSignature(restored);
+        lastUserIdRef.current = currentUserId;
+        window.localStorage.setItem(getQueueStorageKey(currentUserId), JSON.stringify(restored));
       } catch {
         // ignore
       }
     };
 
-    void rehydrateQueue();
+    void syncQueueForSession();
 
     return () => {
       alive = false;
     };
-  }, [manager]);
+  }, [authLoading, manager, user?.id]);
 
   useEffect(() => {
-    const clearQueue = () => {
-      manager.loadQueue([]);
+    const clearQueue = (event: Event) => {
+      const detail =
+        event instanceof CustomEvent && typeof event.detail === "object" && event.detail
+          ? (event.detail as { userId?: string | null })
+          : null;
+
+      manager.restoreQueueWithoutCurrent([]);
+      lastQueueSigRef.current = "";
+
       try {
-        window.localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify([]));
+        window.localStorage.removeItem(LEGACY_QUEUE_STORAGE_KEY);
+        if (user?.id) {
+          window.localStorage.removeItem(getQueueStorageKey(user.id));
+        }
+        if (detail?.userId) {
+          window.localStorage.removeItem(getQueueStorageKey(detail.userId));
+        }
       } catch {
         // ignore
       }
@@ -145,40 +188,27 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener(CLEAR_QUEUE_EVENT, clearQueue);
     };
-  }, [manager]);
-
-  useEffect(() => {
-    const currentUserId = user?.id ?? null;
-    const previousUserId = lastUserIdRef.current;
-
-    if (previousUserId === undefined) {
-      lastUserIdRef.current = currentUserId;
-      return;
-    }
-
-    if (previousUserId === currentUserId) {
-      return;
-    }
-
-    const queue = manager.getState().queue;
-    const filteredQueue = queue.filter(isTrackValidAcrossSessions);
-
-    if (filteredQueue.length !== queue.length) {
-      manager.restoreQueueWithoutCurrent(filteredQueue);
-    }
-
-    lastUserIdRef.current = currentUserId;
   }, [manager, user?.id]);
 
   useEffect(() => {
     // Persist queue changes, but avoid writing on progress ticks.
     const persistIfChanged = () => {
+      if (authLoading || !user?.id) {
+        lastQueueSigRef.current = "";
+        try {
+          window.localStorage.removeItem(LEGACY_QUEUE_STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
       try {
         const q = manager.getState().queue.filter(shouldPersistTrack);
         const sig = queueSignature(q);
         if (sig === lastQueueSigRef.current) return;
         lastQueueSigRef.current = sig;
-        window.localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(q));
+        window.localStorage.setItem(getQueueStorageKey(user.id), JSON.stringify(q));
       } catch {
         // ignore
       }
@@ -190,7 +220,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     return manager.subscribe(() => {
       persistIfChanged();
     });
-  }, [manager]);
+  }, [authLoading, manager, user?.id]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }

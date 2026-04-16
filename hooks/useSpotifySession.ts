@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { sanitizeSpotifyUrlState } from "@/lib/auth/spotify-url-state";
+import { useAuth } from "@/providers/AuthProvider";
 
 const SPOTIFY_AUTH_REQUIRED_EVENT = "tarium:spotify-auth-required";
 
@@ -15,8 +17,6 @@ type SpotifySessionState =
   | { status: "loading"; me: null }
   | { status: "disconnected"; me: null }
   | { status: "connected"; me: SpotifyMe };
-
-const TRANSIENT_OAUTH_PARAMS = ["spotify", "reason", "spotify_error"] as const;
 
 async function hasUsableSpotifyToken(): Promise<boolean> {
   try {
@@ -36,28 +36,28 @@ async function hasUsableSpotifyToken(): Promise<boolean> {
 }
 
 export function useSpotifySession() {
+  const { user, authLoading } = useAuth();
   const [state, setState] = useState<SpotifySessionState>({ status: "loading", me: null });
 
   const stripTransientOAuthParams = useCallback((): { hadConnectedMarker: boolean } => {
-    const url = new URL(window.location.href);
-    const hadConnectedMarker = url.searchParams.get("spotify") === "connected";
-
-    let changed = false;
-    for (const key of TRANSIENT_OAUTH_PARAMS) {
-      if (url.searchParams.has(key)) {
-        url.searchParams.delete(key);
-        changed = true;
-      }
-    }
+    const { changed, hadConnectedMarker, sanitizedUrl } = sanitizeSpotifyUrlState(window.location.href);
 
     if (changed) {
-      window.history.replaceState(window.history.state, "", url.toString());
+      window.history.replaceState(window.history.state, "", sanitizedUrl);
     }
 
     return { hadConnectedMarker };
   }, []);
 
   const resolveSessionState = useCallback(async (): Promise<SpotifySessionState> => {
+    if (authLoading) {
+      return { status: "loading", me: null };
+    }
+
+    if (!user) {
+      return { status: "disconnected", me: null };
+    }
+
     try {
       const res = await fetch("/api/spotify/me", {
         cache: "no-store",
@@ -78,7 +78,7 @@ export function useSpotifySession() {
     } catch {
       return { status: "disconnected", me: null };
     }
-  }, []);
+  }, [authLoading, user]);
 
   const refresh = useCallback(async () => {
     const next = await resolveSessionState();
@@ -89,7 +89,16 @@ export function useSpotifySession() {
     let alive = true;
 
     const bootstrap = async () => {
+      if (authLoading) {
+        setState({ status: "loading", me: null });
+        return;
+      }
+
       const { hadConnectedMarker } = stripTransientOAuthParams();
+      if (!user) {
+        setState({ status: "disconnected", me: null });
+        return;
+      }
       const maxAttempts = hadConnectedMarker ? 4 : 1;
 
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -132,7 +141,7 @@ export function useSpotifySession() {
       window.removeEventListener(SPOTIFY_AUTH_REQUIRED_EVENT, handleSpotifyAuthRequired);
       window.removeEventListener("popstate", handlePopState);
     };
-  }, [refresh, resolveSessionState, stripTransientOAuthParams]);
+  }, [authLoading, refresh, resolveSessionState, stripTransientOAuthParams, user]);
 
   return { ...state, refresh };
 }

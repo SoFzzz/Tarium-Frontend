@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import crypto from "crypto";
+import { TARIUM_SESSION_COOKIE, TARIUM_SESSION_COOKIE_VALUE } from "@/lib/auth/session-marker";
 
 export const runtime = "nodejs";
 
@@ -36,7 +38,24 @@ function getRedirectUri(request: Request): string {
   return new URL("/callback", getRequestOrigin(request)).toString();
 }
 
+function redirectHome(request: Request, params?: Record<string, string>) {
+  const url = new URL("/", getRequestOrigin(request));
+
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+  }
+
+  return NextResponse.redirect(url);
+}
+
 export async function GET(request: Request) {
+  const appSessionCookie = (await cookies()).get(TARIUM_SESSION_COOKIE)?.value;
+  if (appSessionCookie !== TARIUM_SESSION_COOKIE_VALUE) {
+    return redirectHome(request, { spotify: "error", reason: "auth_required" });
+  }
+
   const clientId = process.env.SPOTIFY_CLIENT_ID?.trim();
 
   if (!clientId) {
